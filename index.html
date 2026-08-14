@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f172a">
-<title>Stock Account Tracker — Pro Daily Trader v8 — 1s Live</title>
+<title>Stock Account Tracker — Pro Daily Trader v9 — Finnhub 1s Live</title>
 <style>
 :root{--bg:#f4f7fb;--card:#fff;--text:#172033;--muted:#667085;--line:#d9e0ea;--accent:#2563eb;--green:#087443;--greenbg:#ecfdf3;--red:#b42318;--redbg:#fef3f2;--amber:#a15c00;--amberbg:#fff7e6}
 [data-theme=dark]{--bg:#0b1220;--card:#111827;--text:#f8fafc;--muted:#9ca3af;--line:#2b3648;--accent:#60a5fa;--green:#34d399;--greenbg:#0d2a22;--red:#fb7185;--redbg:#32151a;--amber:#fbbf24;--amberbg:#2f2610}
@@ -69,12 +69,10 @@
     <div><label>Twelve Data REST Fallback Refresh (seconds, minimum 60)</label><input id="refreshSec" type="number" step="30" min="60"></div>
     <div><label>Extended Hours for US Quotes</label><select id="extendedHours"><option value="false">Regular session only (recommended)</option><option value="true">Use extended hours (Pro data required)</option></select></div>
     <div><label>Twelve Data API Key</label><input id="twelveKey" type="password" autocomplete="off" placeholder="Chart analysis / REST fallback"></div>
-    <div><label>Alpaca API Key ID</label><input id="alpacaKey" type="password" autocomplete="off" placeholder="Required for 1-second US live prices"></div>
-    <div><label>Alpaca Secret Key</label><input id="alpacaSecret" type="password" autocomplete="off" placeholder="Stored only in this browser"></div>
-    <div><label>Alpaca Live Feed</label><select id="alpacaFeed"><option value="iex">IEX — free real-time</option><option value="sip">SIP — consolidated US exchanges (paid)</option></select></div>
+    <div><label>Finnhub API Key</label><input id="finnhubKey" type="password" autocomplete="off" placeholder="Free real-time US WebSocket feed"></div>
     <div><label>Alpha Vantage News API Key</label><input id="alphaKey" type="password" autocomplete="off" placeholder="Optional — for stock news"></div>
   </div>
-  <div class="note" style="margin-top:14px">The app uses Twelve Data REST data for latest US prices and on-demand chart analysis. The analyzer combines 5-minute, 1-hour, derived 4-hour, and daily structure; Ichimoku confirmation; VWAP; opening range; approximate 5-day Volume Profile (VAL/POC/VAH); volume; support/resistance; and optional Alpha Vantage news. For owned positions that recover to break-even, the analyzer switches into profit-protection mode and follows momentum with a dynamic trailing profit floor instead of forcing an early fixed sale. For 1-second US price updates, the app uses a continuously connected Alpaca WebSocket and redraws the latest market price every second; Twelve Data remains the chart-analysis source. Free Alpaca uses IEX; paid SIP can be selected for consolidated US-exchange pricing. The analyzer now uses one 5-minute history request and derives H1/H4/daily structure locally to avoid rate-limit errors. API keys are stored separately from exported portfolio backups.</div>
+  <div class="note" style="margin-top:14px">The app uses Finnhub WebSocket streaming for real-time US trade prices and redraws the portfolio every second. Twelve Data is reserved for on-demand chart analysis and REST fallback, which reduces HTTP 429 pressure. The analyzer combines 5-minute, 1-hour, derived 4-hour, and daily structure; Ichimoku confirmation; VWAP; opening range; approximate 5-day Volume Profile (VAL/POC/VAH); volume; support/resistance; and optional Alpha Vantage news. For owned positions that recover to break-even, it switches into profit-protection mode with a dynamic trailing profit floor. Manual price override remains available at all times. API keys are stored only in this browser and are excluded from portfolio backups.</div>
   <div class="mact"><button class="secondary" onclick="testConnection()">Test Twelve Data</button><button class="secondary" onclick="testLiveStream()">Test Live Stream</button><button class="primary" onclick="saveSettings()">Save</button></div>
 </div></div>
 
@@ -126,11 +124,11 @@
 <script>
 const KEY="stockAccountTrackerLiveV1",LEGACY_V4="stockAccountTrackerV4",OLD3="stockPortfolioTrackerV3",OLD2="stockPortfolioTrackerV2",THEME="stockAccountTrackerLiveTheme",SECRET_KEY="stockAccountTrackerLiveSecretsV1";
 let editingId=null,state=loadState(),secrets=loadSecrets(),editingDividendId=null,editingRecoveryId=null,editingAnalysisId=null,pendingConsiderId=null;
-let ws=null,wsHeartbeat=null,quoteTimer=null,analysisTimer=null,saveTimer=null,liveRenderTimer=null,liveUiTimer=null,alpacaReconnectTimer=null,alpacaManualClose=false,alpacaAuthenticated=false,alpacaSubscribedKey="",alpacaSubscribedSymbols=[],alpacaGeneration=0,alpacaLastMessageAt=0,alpacaStreamError="";
+let ws=null,wsHeartbeat=null,quoteTimer=null,analysisTimer=null,saveTimer=null,liveRenderTimer=null,liveUiTimer=null,finnhubReconnectTimer=null,finnhubManualClose=false,finnhubConnected=false,finnhubSubscribedSymbols=[],finnhubGeneration=0,finnhubLastMessageAt=0,finnhubStreamError="";
 const runtimeQuotes={},runtimeAnalysis={},newsCache={},dailyHistoryCache={},symbolMap={};
 
 function uid(){return crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random())}
-function base(){let a=[{id:uid(),name:"TFSA",stocks:[]},{id:uid(),name:"FHSA",stocks:[]},{id:uid(),name:"Other",stocks:[]}];return{settings:{currency:"CAD",defaultBuy:6.95,defaultSell:6.95,dailyProfitTarget:10},accounts:a,activeAccountId:a[0].id,sharedPrices:{},priceModes:{},marketData:{refreshSec:120,includeExtended:false,restStabilityV2:true,strategyVersion:6,alpacaFeed:"iex"},analysisCache:{},considering:[],profitGuards:{}}}
+function base(){let a=[{id:uid(),name:"TFSA",stocks:[]},{id:uid(),name:"FHSA",stocks:[]},{id:uid(),name:"Other",stocks:[]}];return{settings:{currency:"CAD",defaultBuy:6.95,defaultSell:6.95,dailyProfitTarget:10},accounts:a,activeAccountId:a[0].id,sharedPrices:{},priceModes:{},marketData:{refreshSec:120,includeExtended:false,restStabilityV2:true,strategyVersion:6},analysisCache:{},considering:[],profitGuards:{}}}
 function normalizeState(s){
   if(!s||!Array.isArray(s.accounts))return base();
   s.settings=s.settings||{};
@@ -141,7 +139,7 @@ function normalizeState(s){
   s.sharedPrices=s.sharedPrices||{};s.priceModes=s.priceModes||{};s.marketData=s.marketData||{};s.analysisCache=s.analysisCache||{};s.considering=Array.isArray(s.considering)?s.considering:[];s.profitGuards=s.profitGuards||{};
   s.considering=s.considering.map(c=>({id:c.id||`consider-${uid()}`,ticker:String(c.ticker||"").trim().toUpperCase(),name:c.name||"",market:c.market||"US",saleCommission:Number(c.saleCommission??s.settings.defaultSell??6.95),currentPrice:Number(c.currentPrice||0)})).filter(c=>c.ticker);
   if(Number(s.marketData.strategyVersion||0)!==6){s.analysisCache={};s.marketData.strategyVersion=6}
-  s.marketData.alpacaFeed=(s.marketData.alpacaFeed==="sip"?"sip":"iex");s.marketData.refreshSec=Math.max(60,Number(s.marketData.refreshSec)||120);if(!s.marketData.restStabilityV2){s.marketData.includeExtended=false;s.marketData.refreshSec=Math.max(120,s.marketData.refreshSec);s.marketData.restStabilityV2=true}else{s.marketData.includeExtended=Boolean(s.marketData.includeExtended)};
+  delete s.marketData.alpacaFeed;s.marketData.refreshSec=Math.max(60,Number(s.marketData.refreshSec)||120);if(!s.marketData.restStabilityV2){s.marketData.includeExtended=false;s.marketData.refreshSec=Math.max(120,s.marketData.refreshSec);s.marketData.restStabilityV2=true}else{s.marketData.includeExtended=Boolean(s.marketData.includeExtended)};
   s.accounts.forEach(a=>{a.stocks=(a.stocks||[]).map(st=>{st.sales=st.sales||[];st.purchases=st.purchases||[];st.market=st.market||"AUTO";st.distribution=st.distribution||{amount:0,frequency:"monthly",exDate:"",source:"manual",lastUpdated:""};st.deposits=st.deposits||[];const t=(st.ticker||"").toUpperCase();if(t&&s.sharedPrices[t]===undefined&&Number.isFinite(Number(st.currentPrice)))s.sharedPrices[t]=Number(st.currentPrice)||0;if(t&&!s.priceModes[t])s.priceModes[t]={mode:"live",manual:Number(s.sharedPrices[t]??st.currentPrice??0),lastLive:null,lastUpdated:""};return st})});
   if(!s.accounts.some(a=>a.id===s.activeAccountId))s.activeAccountId=s.accounts[0]?.id;
   return s;
@@ -170,7 +168,7 @@ function loadState(){try{
   localStorage.setItem(KEY,JSON.stringify(d));
   return d;
 }catch{return base()}}
-function loadSecrets(){try{return JSON.parse(localStorage.getItem(SECRET_KEY)||"{}")||{}}catch{return{}}}
+function loadSecrets(){try{const x=JSON.parse(localStorage.getItem(SECRET_KEY)||"{}")||{};delete x.alpacaKey;delete x.alpacaSecret;return x}catch{return{}}}
 function save(){localStorage.setItem(KEY,JSON.stringify(state))}
 function saveSecrets(){localStorage.setItem(SECRET_KEY,JSON.stringify(secrets))}
 function scheduleSave(){if(saveTimer)return;saveTimer=setTimeout(()=>{saveTimer=null;save()},1500)}
@@ -207,13 +205,22 @@ function apiSymbol(s,a){const t=(s.ticker||"").trim().toUpperCase();if(!t)return
 function priceMode(t){t=(t||"").toUpperCase();if(!state.priceModes[t])state.priceModes[t]={mode:"live",manual:Number(state.sharedPrices[t]||0),lastLive:null,lastUpdated:""};return state.priceModes[t]}
 function effectivePrice(s,a=null){const t=(s.ticker||"").toUpperCase(),pm=priceMode(t);if(pm.mode==="manual")return Number(pm.manual??state.sharedPrices[t]??s.currentPrice??0)||0;const q=runtimeQuotes[t];if(q&&Number.isFinite(Number(q.effective))&&Number(q.effective)>0)return Number(q.effective);if(Number.isFinite(Number(pm.lastLive))&&Number(pm.lastLive)>0)return Number(pm.lastLive);return Number(state.sharedPrices[t]??s.currentPrice??pm.manual??0)||0}
 function lastGoodQuoteTime(t){const pm=priceMode(t),q=runtimeQuotes[t];if(q?.timestamp)return Number(q.timestamp);const ms=Date.parse(pm.lastUpdated||"");return Number.isFinite(ms)?ms/1000:0}
-function quoteStatus(s,a){const t=(s.ticker||"").toUpperCase(),pm=priceMode(t);if(pm.mode==="manual")return{cls:"manual",label:"Manual override"};if(marketOf(s,a)!=="US")return{cls:"fallback",label:"Manual/fallback • non-US"};const q=runtimeQuotes[t],ts=lastGoodQuoteTime(t),age=ts?Math.max(0,Date.now()/1000-ts):Infinity,hasLive=Number(pm.lastLive)>0||Number(q?.effective)>0,src=String(q?.source||"");if(hasLive&&age<=15&&src.includes("Alpaca")){const feed=(state.marketData.alpacaFeed||"iex").toUpperCase(),ageText=age<1?"<1s":`${Math.floor(age)}s`;return{cls:"live",label:`LIVE • ALPACA ${feed} • ${ageText}`}}if(hasLive&&age<=90&&src.includes("Twelve"))return{cls:"live",label:q?.lastError?"Live REST • retrying":"LIVE • TWELVE REST"};if(hasLive&&age<=900)return{cls:"stale",label:q?.lastError?"Last live • retrying":"Last live • stale"};if(q?.error||q?.lastError||alpacaStreamError)return{cls:"error",label:"Feed unavailable — fallback"};if(secrets.alpacaKey&&secrets.alpacaSecret)return{cls:"fallback",label:"Live stream connecting…"};return{cls:"fallback",label:secrets.twelveKey?"Fallback — 1s live needs Alpaca":"Fallback — connect live data"}}
+function quoteStatus(s,a){
+  const t=(s.ticker||"").toUpperCase(),pm=priceMode(t);if(pm.mode==="manual")return{cls:"manual",label:"Manual override"};if(marketOf(s,a)!=="US")return{cls:"fallback",label:"Manual/fallback • non-US"};
+  const q=runtimeQuotes[t],ts=lastGoodQuoteTime(t),age=ts?Math.max(0,Date.now()/1000-ts):Infinity,hasLive=Number(pm.lastLive)>0||Number(q?.effective)>0,src=String(q?.source||""),ageText=age<1?"<1s":age<60?`${Math.floor(age)}s`:`${Math.floor(age/60)}m`;
+  if(hasLive&&src.includes("Finnhub")&&ws&&ws.readyState===WebSocket.OPEN&&finnhubConnected){if(age<=30)return{cls:"live",label:`LIVE • FINNHUB • ${ageText}`};return{cls:"stale",label:`FINNHUB CONNECTED • last trade ${ageText}`}};
+  if(hasLive&&age<=90&&src.includes("Twelve"))return{cls:"live",label:q?.lastError?"Live REST • retrying":"LIVE • TWELVE REST"};
+  if(hasLive&&age<=900)return{cls:"stale",label:q?.lastError?"Last live • retrying":src.includes("Finnhub")?`FINNHUB • last trade ${ageText}`:"Last live • stale"};
+  if(q?.error||q?.lastError||finnhubStreamError)return{cls:"error",label:"Feed unavailable — fallback"};
+  if(secrets.finnhubKey)return{cls:"fallback",label:"Finnhub stream connecting…"};
+  return{cls:"fallback",label:secrets.twelveKey?"Fallback — add Finnhub for 1s live":"Fallback — connect live data"}
+}
 function distMultiplier(f){return f==="monthly"?12:f==="quarterly"?4:f==="semiannual"?2:1}
 function distributionYield(s,a){const p=effectivePrice(s,a),d=Number(s.distribution?.amount||0);return p>0&&d>0?d*distMultiplier(s.distribution.frequency)*100/p:0}
 
 function render(){renderTabs();renderConsidering();renderStocks();renderSummary()}
 function renderTabs(){tabs.innerHTML=state.accounts.map(a=>`<button class="tab ${a.id===state.activeAccountId?"active":""}" onclick="switchAccount('${a.id}')">${esc(a.name)}</button>`).join("")}
-function switchAccount(id){state.activeAccountId=id;save();render();restartLiveFeed();if(!alpacaReady())refreshQuotes(false)}
+function switchAccount(id){state.activeAccountId=id;save();render();restartLiveFeed();if(!finnhubReady())refreshQuotes(false)}
 function renderConsidering(){
   const q=(search?.value||"").trim().toLowerCase(),items=(state.considering||[]).filter(s=>(s.ticker||"").toLowerCase().includes(q)||(s.name||"").toLowerCase().includes(q));
   consideringList.innerHTML=items.length?items.map(consideringCard).join(""):'<div class="empty">No new stocks being considered. Tap Analyze New Stock to screen a ticker before buying.</div>'
@@ -258,11 +265,11 @@ function openPrices(){priceRows.innerHTML=uniqueTickers().map(priceRowHtml).join
 function closePrices(){pricesModal.classList.remove("open")}
 function savePrices(){for(const row of document.querySelectorAll("#priceRows .price-row")){const t=row.dataset.ticker,mode=row.querySelector(".price-mode").value,manual=Number(row.querySelector(".manual-price").value);if(!Number.isFinite(manual)||manual<0)return alert(`Enter a valid fallback price for ${t}.`);const pm=priceMode(t);pm.mode=mode;pm.manual=manual;if(mode==="manual")state.sharedPrices[t]=manual;else if(Number.isFinite(Number(pm.lastLive))&&Number(pm.lastLive)>0)state.sharedPrices[t]=Number(pm.lastLive);else state.sharedPrices[t]=manual;updateProfitGuardsForTicker(t,state.sharedPrices[t])}save();closePrices();render();restartLiveFeed();refreshQuotes(true)}
 
-function openSettings(){currency.value=state.settings.currency;defaultBuy.value=state.settings.defaultBuy;defaultSell.value=state.settings.defaultSell;dailyTarget.value=state.settings.dailyProfitTarget??10;refreshSec.value=state.marketData.refreshSec??120;extendedHours.value=String(state.marketData.includeExtended!==false);twelveKey.value=secrets.twelveKey||"";alpacaKey.value=secrets.alpacaKey||"";alpacaSecret.value=secrets.alpacaSecret||"";alpacaFeed.value=state.marketData.alpacaFeed||"iex";alphaKey.value=secrets.alphaKey||"";settingsModal.classList.add("open")}
+function openSettings(){currency.value=state.settings.currency;defaultBuy.value=state.settings.defaultBuy;defaultSell.value=state.settings.defaultSell;dailyTarget.value=state.settings.dailyProfitTarget??10;refreshSec.value=state.marketData.refreshSec??120;extendedHours.value=String(state.marketData.includeExtended!==false);twelveKey.value=secrets.twelveKey||"";finnhubKey.value=secrets.finnhubKey||"";alphaKey.value=secrets.alphaKey||"";settingsModal.classList.add("open")}
 function closeSettings(){settingsModal.classList.remove("open")}
-function saveSettings(){state.settings.currency=currency.value;state.settings.defaultBuy=Number(defaultBuy.value)||0;state.settings.defaultSell=Number(defaultSell.value)||0;state.settings.dailyProfitTarget=Math.max(0,Number(dailyTarget.value)||0);state.marketData.refreshSec=Math.max(60,Number(refreshSec.value)||120);state.marketData.includeExtended=extendedHours.value==="true";state.marketData.alpacaFeed=alpacaFeed.value==="sip"?"sip":"iex";secrets.twelveKey=twelveKey.value.trim();secrets.alpacaKey=alpacaKey.value.trim();secrets.alpacaSecret=alpacaSecret.value.trim();secrets.alphaKey=alphaKey.value.trim();save();saveSecrets();closeSettings();render();restartLiveFeed(true);restartTimers();if(!(secrets.alpacaKey&&secrets.alpacaSecret))refreshQuotes(true)}
-async function testConnection(){const key=twelveKey.value.trim();if(!key)return alert("Enter a Twelve Data API key first.");const first=uniqueTickers().find(x=>marketOf(x.s,x.a)==="US")||uniqueTickers()[0];if(!first)return alert("Add or consider a stock first.");try{const d=await tdFetch("price",{symbol:first.symbol},key);if(d.status==="error"||d.code)throw Error(d.message||"API error");const alp=(alpacaKey.value.trim()&&alpacaSecret.value.trim())?" Alpaca credentials are entered; Save Settings to start the real-time IEX stream.":" Add optional Alpaca credentials for tick-by-tick IEX prices.";alert(`Twelve Data connected. ${first.t}: ${d.price||"price received"}.${alp}`)}catch(e){alert(`Connection failed: ${e.message}`)}}
-function testLiveStream(){const k=alpacaKey.value.trim(),sec=alpacaSecret.value.trim();if(!k||!sec)return alert("Enter the Alpaca API Key ID and Secret Key, then Save Settings.");if(k!==secrets.alpacaKey||sec!==secrets.alpacaSecret)return alert("Save Settings first so the live-stream credentials can be applied.");if(ws&&ws.readyState===WebSocket.OPEN&&alpacaAuthenticated){const age=alpacaLastMessageAt?((Date.now()-alpacaLastMessageAt)/1000).toFixed(1):"—";return alert(`Alpaca live stream is connected (${(state.marketData.alpacaFeed||"iex").toUpperCase()}). Latest stream message age: ${age}s.`)}alpacaStreamError="";restartLiveFeed(true);setTimeout(()=>{if(ws&&ws.readyState===WebSocket.OPEN&&alpacaAuthenticated)alert(`Alpaca live stream connected (${(state.marketData.alpacaFeed||"iex").toUpperCase()}). Prices redraw every 1 second.`);else alert(`Live stream is not authenticated yet${alpacaStreamError?`: ${alpacaStreamError}`:". Check credentials, plan/feed, or whether another Alpaca stream connection is already open."}`)},2500)}
+function saveSettings(){state.settings.currency=currency.value;state.settings.defaultBuy=Number(defaultBuy.value)||0;state.settings.defaultSell=Number(defaultSell.value)||0;state.settings.dailyProfitTarget=Math.max(0,Number(dailyTarget.value)||0);state.marketData.refreshSec=Math.max(60,Number(refreshSec.value)||120);state.marketData.includeExtended=extendedHours.value==="true";secrets.twelveKey=twelveKey.value.trim();secrets.finnhubKey=finnhubKey.value.trim();delete secrets.alpacaKey;delete secrets.alpacaSecret;secrets.alphaKey=alphaKey.value.trim();save();saveSecrets();closeSettings();render();restartLiveFeed(true);restartTimers();if(!secrets.finnhubKey)refreshQuotes(true);else refreshFinnhubSnapshots(false)}
+async function testConnection(){const key=twelveKey.value.trim();if(!key)return alert("Enter a Twelve Data API key first.");const first=uniqueTickers().find(x=>marketOf(x.s,x.a)==="US")||uniqueTickers()[0];if(!first)return alert("Add or consider a stock first.");try{const d=await tdFetch("price",{symbol:first.symbol},key);if(d.status==="error"||d.code)throw Error(d.message||"API error");const fh=finnhubKey.value.trim()?" Finnhub key is entered; Save Settings to start the real-time WebSocket.":" Add a free Finnhub key for real-time US prices.";alert(`Twelve Data connected. ${first.t}: ${d.price||"price received"}.${fh}`)}catch(e){alert(`Connection failed: ${e.message}`)}}
+async function testLiveStream(){const k=finnhubKey.value.trim();if(!k)return alert("Enter a Finnhub API key, then Save Settings.");if(k!==secrets.finnhubKey)return alert("Save Settings first so the Finnhub key can be applied.");const first=streamLiveTickers()[0]||uniqueTickers().find(x=>marketOf(x.s,x.a)==="US");try{if(first){const d=await finnhubFetch("quote",{symbol:first.t},k);const px=Number(d?.c);if(!Number.isFinite(px)||px<=0)throw Error("Finnhub did not return a valid US quote for the test symbol.");applyQuote(first.t,{effective:px,regular:px,lastTrade:px,timestamp:Number(d.t)||Date.now()/1000,source:"Finnhub REST snapshot",symbol:first.t},false)}finnhubStreamError="";restartLiveFeed(true);setTimeout(()=>{if(ws&&ws.readyState===WebSocket.OPEN&&finnhubConnected)alert("Finnhub live stream is connected. New trades arrive by WebSocket and the app redraws prices every 1 second.");else alert(`Finnhub stream is not connected yet${finnhubStreamError?`: ${finnhubStreamError}`:". Check the API key and internet connection."}`)},1800)}catch(e){alert(`Finnhub connection failed: ${e.message}`)}}
 
 function openDividend(id){editingDividendId=id;const f=findStock(id);if(!f)return;const{s,a}=f;divTitle.textContent=`${s.ticker} — Distribution / Dividend`;distAmount.value=Number(s.distribution?.amount||0)||"";distFrequency.value=s.distribution?.frequency||"monthly";distExDate.value=s.distribution?.exDate||"";depositDate.value=today();renderDividendSummary();renderDividendHistory();dividendModal.classList.add("open")}
 function closeDividend(){dividendModal.classList.remove("open");editingDividendId=null}
@@ -345,7 +352,12 @@ function renderAnalysisDetail(s,a,an){
   <div class="rows"><h3>Relevant News</h3><div class="news">${news.length?news.map(n=>`<div class="newsItem"><div class="newsTitle">${esc(n.title)}</div><div class="newsMeta">${esc(n.time)} • ${esc(n.sentiment||"Neutral")}</div></div>`).join(""):`<div class="note">${secrets.alphaKey?"No relevant recent news returned for this ticker.":"News is not connected. Add an Alpha Vantage API key in Settings; the chart engine still works without it."}</div>`}</div></div>
   <div class="note" style="margin-top:12px">Decision-support only. The engine deliberately returns WAIT or NO TRADE when the timeframes disagree, volume does not confirm, support breaks, or the entry is already extended. Profit-guard levels can be crossed by gaps or fast markets, so they are not guaranteed sale prices.</div>`
 }
-async function ensureAnalysisQuote(s,a){const t=(s.ticker||"").toUpperCase();if(marketOf(s,a)!=="US"||priceMode(t).mode==="manual"||!secrets.twelveKey)return;const age=Date.now()/1000-lastGoodQuoteTime(t),src=String(runtimeQuotes[t]?.source||"");if(Number.isFinite(age)&&((src.includes("Alpaca")&&age<20)||age<55))return;try{const d=await tdFetch("price",{symbol:apiSymbol(s,a)});if(d.status==="error"||d.code)throw Error(d.message||"Latest price unavailable");const px=Number(d.price);if(Number.isFinite(px)&&px>0)applyQuote(t,{effective:px,regular:px,extended:null,timestamp:Date.now()/1000,extendedUsed:false,marketOpen:null,source:"Twelve Data REST /price",symbol:apiSymbol(s,a)},false)}catch(e){markQuoteFailure({t,s,a,symbol:apiSymbol(s,a)},e)}}
+async function ensureAnalysisQuote(s,a){
+  const t=(s.ticker||"").toUpperCase();if(marketOf(s,a)!=="US"||priceMode(t).mode==="manual")return;const age=Date.now()/1000-lastGoodQuoteTime(t),src=String(runtimeQuotes[t]?.source||"");
+  if(Number.isFinite(age)&&src.includes("Finnhub")&&age<45)return;
+  if(secrets.finnhubKey){try{const d=await finnhubFetch("quote",{symbol:t});const px=Number(d?.c);if(Number.isFinite(px)&&px>0){applyQuote(t,{effective:px,regular:px,lastTrade:px,timestamp:Number(d.t)||Date.now()/1000,source:"Finnhub REST snapshot",symbol:t},false);return}}catch{}}
+  if(!secrets.twelveKey)return;try{const d=await tdFetch("price",{symbol:apiSymbol(s,a)});if(d.status==="error"||d.code)throw Error(d.message||"Latest price unavailable");const px=Number(d.price);if(Number.isFinite(px)&&px>0)applyQuote(t,{effective:px,regular:px,extended:null,timestamp:Date.now()/1000,extendedUsed:false,marketOpen:null,source:"Twelve Data REST /price",symbol:apiSymbol(s,a)},false)}catch(e){markQuoteFailure({t,s,a,symbol:apiSymbol(s,a)},e)}
+}
 
 async function analyzeStock(s,a,force=false,includeNews=false){
   const cached=runtimeAnalysis[s.id]||state.analysisCache?.[s.id];
@@ -566,69 +578,40 @@ function applyQuote(t,q,renderAfter=true){const pm=priceMode(t),price=Number(q.e
 function renderLiveViews(){requestAnimationFrame(()=>{render();if(editingRecoveryId)renderRecovery();if(editingDividendId)renderDividendSummary();if(editingAnalysisId){const f=findAnalysisTarget(editingAnalysisId),an=f&&(runtimeAnalysis[f.s.id]||state.analysisCache?.[f.s.id]);if(f&&an)renderAnalysisDetail(f.s,f.a,applyLiveAnalysisOverlay(f.s,f.a,an))}})}
 function markQuoteFailure(item,e){const prev=runtimeQuotes[item.t]||{},pm=priceMode(item.t),lastTs=lastGoodQuoteTime(item.t),age=lastTs?Date.now()/1000-lastTs:Infinity,hasRecent=Number(pm.lastLive)>0&&age<=900,msg=String(e?.message||e||"Price refresh failed");if(hasRecent)runtimeQuotes[item.t]={...prev,lastError:msg,error:null,source:prev.source||"Twelve Data REST /price",symbol:item.symbol};else runtimeQuotes[item.t]={...prev,lastError:msg,error:msg,source:"Twelve Data REST /price",symbol:item.symbol}}
 async function refreshOneQuote(item){try{const d=await tdFetch("price",{symbol:item.symbol});if(!d||d.status==="error"||d.code)throw Error(d?.message||"Latest price unavailable");const px=Number(d.price);if(!Number.isFinite(px)||px<=0)throw Error("No valid latest price returned");applyQuote(item.t,{effective:px,regular:px,extended:null,timestamp:Date.now()/1000,extendedUsed:false,marketOpen:null,source:"Twelve Data REST /price",symbol:item.symbol},false);return true}catch(e){markQuoteFailure(item,e);return false}}
-async function refreshFocusedQuote(){if(!editingAnalysisId||!secrets.twelveKey)return;const f=findAnalysisTarget(editingAnalysisId);if(!f||marketOf(f.s,f.a)!=="US"||priceMode(f.s.ticker).mode==="manual")return;await refreshOneQuote({t:(f.s.ticker||"").toUpperCase(),s:f.s,a:f.a,symbol:apiSymbol(f.s,f.a)});lastQuoteRefreshAt=Date.now();renderLiveViews()}
-async function refreshQuotes(showAlert=false){if(quoteRefreshInFlight)return;if(secrets.alpacaKey&&secrets.alpacaSecret){restartLiveFeed(false);if(showAlert)alert(`Alpaca ${(state.marketData.alpacaFeed||"iex").toUpperCase()} streaming is enabled. Prices redraw every 1 second; Twelve Data REST is used only as fallback/chart data.`);return}if(!secrets.twelveKey){if(showAlert)alert("Add a Twelve Data API key in Settings. Existing manual/fallback prices remain active.");return}const items=activeLiveTickers();if(!items.length){if(showAlert)alert("No active US stocks are currently using Live mode in this account.");renderLiveViews();return}quoteRefreshInFlight=true;let ok=0,fail=0;try{for(const item of items){(await refreshOneQuote(item))?ok++:fail++}}finally{lastQuoteRefreshAt=Date.now();quoteRefreshInFlight=false;renderLiveViews()}if(showAlert)alert(`Live refresh: ${ok} updated${fail?`, ${fail} kept at last/fallback price`:""}. Requests are serialized to prevent HTTP 429.`)}
-function alpacaReady(){return Boolean(secrets.alpacaKey&&secrets.alpacaSecret)}
-function alpacaFeedName(){return state.marketData.alpacaFeed==="sip"?"sip":"iex"}
-function alpacaSubscribe(){
-  if(!ws||ws.readyState!==WebSocket.OPEN||!alpacaAuthenticated)return;
-  const symbols=streamLiveTickers().map(x=>x.t).filter(Boolean).slice(0,30),next=new Set(symbols),prev=new Set(alpacaSubscribedSymbols||[]);
-  const remove=[...prev].filter(x=>!next.has(x)),add=[...next].filter(x=>!prev.has(x));
-  try{
-    if(remove.length)ws.send(JSON.stringify({action:"unsubscribe",trades:remove,quotes:remove}));
-    if(add.length)ws.send(JSON.stringify({action:"subscribe",trades:add,quotes:add}));
-    alpacaSubscribedSymbols=symbols;alpacaSubscribedKey=symbols.join(",");
-  }catch{}
+async function finnhubFetch(endpoint,params={},overrideKey=null){const key=overrideKey??secrets.finnhubKey;if(!key)throw Error("Finnhub API key is not configured.");const u=new URL(`https://finnhub.io/api/v1/${endpoint}`);Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=="")u.searchParams.set(k,v)});u.searchParams.set("token",key);return fetchJSON(u.toString(),12000)}
+async function refreshOneFinnhubQuote(item){try{const d=await finnhubFetch("quote",{symbol:item.t});const px=Number(d?.c);if(!Number.isFinite(px)||px<=0)throw Error("No valid Finnhub quote returned");applyQuote(item.t,{effective:px,regular:px,lastTrade:px,timestamp:Number(d.t)||Date.now()/1000,source:"Finnhub REST snapshot",symbol:item.t},false);return true}catch(e){markQuoteFailure(item,e);return false}}
+async function refreshFinnhubSnapshots(showAlert=false){if(!finnhubReady()){if(showAlert)alert("Add a Finnhub API key in Settings first.");return}const items=streamLiveTickers().slice(0,50);let ok=0,fail=0;for(const item of items){(await refreshOneFinnhubQuote(item))?ok++:fail++;await sleep(35)}lastQuoteRefreshAt=Date.now();renderLiveViews();if(showAlert)alert(`Finnhub snapshot refresh: ${ok} updated${fail?`, ${fail} kept at last/fallback price`:""}. The WebSocket remains connected for real-time trades.`)}
+async function refreshFocusedQuote(){if(!editingAnalysisId)return;const f=findAnalysisTarget(editingAnalysisId);if(!f||marketOf(f.s,f.a)!=="US"||priceMode(f.s.ticker).mode==="manual")return;const item={t:(f.s.ticker||"").toUpperCase(),s:f.s,a:f.a,symbol:apiSymbol(f.s,f.a)};if(finnhubReady())await refreshOneFinnhubQuote(item);else if(secrets.twelveKey)await refreshOneQuote(item);lastQuoteRefreshAt=Date.now();renderLiveViews()}
+async function refreshQuotes(showAlert=false){if(quoteRefreshInFlight)return;if(finnhubReady()){restartLiveFeed(false);await refreshFinnhubSnapshots(showAlert);return}if(!secrets.twelveKey){if(showAlert)alert("Add a Finnhub API key for real-time US prices or a Twelve Data key for fallback. Existing manual prices remain active.");return}const items=activeLiveTickers();if(!items.length){if(showAlert)alert("No active US stocks are currently using Live mode in this account.");renderLiveViews();return}quoteRefreshInFlight=true;let ok=0,fail=0;try{for(const item of items){(await refreshOneQuote(item))?ok++:fail++}}finally{lastQuoteRefreshAt=Date.now();quoteRefreshInFlight=false;renderLiveViews()}if(showAlert)alert(`Twelve Data fallback refresh: ${ok} updated${fail?`, ${fail} kept at last/fallback price`:""}. Add Finnhub for real-time WebSocket prices.`)}
+function finnhubReady(){return Boolean(secrets.finnhubKey)}
+function finnhubSubscribe(){
+  if(!ws||ws.readyState!==WebSocket.OPEN||!finnhubConnected)return;
+  const symbols=streamLiveTickers().map(x=>x.t).filter(Boolean).slice(0,50),next=new Set(symbols),prev=new Set(finnhubSubscribedSymbols||[]),remove=[...prev].filter(x=>!next.has(x)),add=[...next].filter(x=>!prev.has(x));
+  try{for(const symbol of remove)ws.send(JSON.stringify({type:"unsubscribe",symbol}));for(const symbol of add)ws.send(JSON.stringify({type:"subscribe",symbol}));finnhubSubscribedSymbols=symbols}catch(e){finnhubStreamError=String(e?.message||e)}
 }
-function freshestAlpacaPrice(prev,tradePrice,tradeTs,bid,ask,quoteTs){
-  const mid=bid>0&&ask>0?(bid+ask)/2:0,spreadOk=mid>0&&((ask-bid)/mid)<=0.03;
-  if(spreadOk&&quoteTs>=tradeTs)return mid;
-  if(tradePrice>0)return tradePrice;
-  if(spreadOk)return mid;
-  return Number(prev?.effective)||Number(priceMode(prev?.symbol||"").lastLive)||0;
+function startFinnhubStream(){
+  closeLiveFeed(true);if(!finnhubReady())return;finnhubManualClose=false;finnhubConnected=false;finnhubSubscribedSymbols=[];finnhubStreamError="";const gen=++finnhubGeneration;
+  try{ws=new WebSocket(`wss://ws.finnhub.io?token=${encodeURIComponent(secrets.finnhubKey)}`)}catch(e){finnhubStreamError=String(e?.message||e);return}
+  ws.onopen=()=>{if(gen!==finnhubGeneration)return;finnhubConnected=true;finnhubStreamError="";finnhubSubscribe();refreshFinnhubSnapshots(false)};
+  ws.onmessage=ev=>{if(gen!==finnhubGeneration)return;finnhubLastMessageAt=Date.now();let m;try{m=JSON.parse(ev.data)}catch{return}let touched=false;if(m?.type==="trade"&&Array.isArray(m.data)){for(const d of m.data){const t=String(d.s||"").toUpperCase(),px=Number(d.p);let ts=Number(d.t);if(ts>1e12)ts/=1000;if(!Number.isFinite(ts)||ts<=0)ts=Date.now()/1000;if(t&&px>0){applyQuote(t,{effective:px,regular:px,lastTrade:px,tradeTimestamp:ts,timestamp:ts,volume:Number(d.v)||null,source:"Finnhub WebSocket real-time",symbol:t},false);touched=true}}}else if(m?.type==="error"){finnhubStreamError=String(m.msg||"Finnhub stream error");for(const item of streamLiveTickers())markQuoteFailure(item,`Finnhub: ${finnhubStreamError}`)}if(touched)scheduleLiveRender()};
+  ws.onclose=()=>{if(gen!==finnhubGeneration)return;ws=null;finnhubConnected=false;finnhubSubscribedSymbols=[];if(!finnhubManualClose&&finnhubReady()){clearTimeout(finnhubReconnectTimer);finnhubReconnectTimer=setTimeout(startFinnhubStream,2500)}};
+  ws.onerror=()=>{finnhubStreamError=finnhubStreamError||"WebSocket connection error"}
 }
-function startAlpacaStream(){
-  closeLiveFeed(true);if(!alpacaReady())return;
-  alpacaManualClose=false;alpacaAuthenticated=false;alpacaSubscribedKey="";alpacaSubscribedSymbols=[];alpacaStreamError="";const gen=++alpacaGeneration,feed=alpacaFeedName();
-  try{ws=new WebSocket(`wss://stream.data.alpaca.markets/v2/${feed}`)}catch(e){alpacaStreamError=String(e?.message||e);return}
-  ws.onopen=()=>{if(gen!==alpacaGeneration)return;try{ws.send(JSON.stringify({action:"auth",key:secrets.alpacaKey,secret:secrets.alpacaSecret}))}catch{}};
-  ws.onmessage=ev=>{
-    if(gen!==alpacaGeneration)return;alpacaLastMessageAt=Date.now();let arr;try{arr=JSON.parse(ev.data)}catch{return}if(!Array.isArray(arr))arr=[arr];let touched=false;
-    for(const m of arr){
-      if(m.T==="success"&&m.msg==="authenticated"){alpacaAuthenticated=true;alpacaStreamError="";alpacaSubscribe();continue}
-      if(m.T==="error"){alpacaStreamError=`${m.code||""} ${m.msg||"stream error"}`.trim();for(const item of streamLiveTickers())markQuoteFailure(item,`Alpaca: ${alpacaStreamError}`);continue}
-      if(m.T==="t"&&m.S){
-        const t=String(m.S).toUpperCase(),px=Number(m.p),ts=Date.parse(m.t||"")/1000,prev=runtimeQuotes[t]||{},tradeTs=Number.isFinite(ts)?ts:Date.now()/1000,bid=Number(prev.bid)||0,ask=Number(prev.ask)||0,quoteTs=Number(prev.quoteTimestamp)||0;
-        if(px>0){const effective=freshestAlpacaPrice({...prev,symbol:t},px,tradeTs,bid,ask,quoteTs);applyQuote(t,{effective,regular:px,lastTrade:px,tradeTimestamp:tradeTs,bid:bid||null,ask:ask||null,quoteTimestamp:quoteTs||null,timestamp:Math.max(tradeTs,quoteTs||0),source:`Alpaca ${feed.toUpperCase()} real-time`,symbol:t},false);touched=true}
-      }else if(m.T==="q"&&m.S){
-        const t=String(m.S).toUpperCase(),bid=Number(m.bp),ask=Number(m.ap),prev=runtimeQuotes[t]||{},qts=Date.parse(m.t||"")/1000,quoteTs=Number.isFinite(qts)?qts:Date.now()/1000,tradePrice=Number(prev.lastTrade||prev.regular)||0,tradeTs=Number(prev.tradeTimestamp)||0,effective=freshestAlpacaPrice({...prev,symbol:t},tradePrice,tradeTs,bid,ask,quoteTs);
-        if(effective>0){applyQuote(t,{effective,bid:bid||null,ask:ask||null,lastTrade:tradePrice||null,tradeTimestamp:tradeTs||null,quoteTimestamp:quoteTs,timestamp:Math.max(quoteTs,tradeTs||0),source:`Alpaca ${feed.toUpperCase()} real-time`,symbol:t},false);touched=true}
-      }
-    }
-    if(touched)scheduleLiveRender();
-  };
-  ws.onclose=()=>{if(gen!==alpacaGeneration)return;ws=null;alpacaAuthenticated=false;alpacaSubscribedKey="";alpacaSubscribedSymbols=[];if(!alpacaManualClose&&alpacaReady()){clearTimeout(alpacaReconnectTimer);alpacaReconnectTimer=setTimeout(startAlpacaStream,2500)}};
-  ws.onerror=()=>{alpacaStreamError=alpacaStreamError||"WebSocket connection error"};
-}
-function restartLiveFeed(force=false){
-  if(!alpacaReady()){closeLiveFeed();return}
-  if(!force&&ws&&ws.readyState===WebSocket.OPEN){if(alpacaAuthenticated)alpacaSubscribe();return}
-  startAlpacaStream()
-}
-function closeLiveFeed(manual=true){alpacaGeneration++;if(manual)alpacaManualClose=true;clearTimeout(alpacaReconnectTimer);alpacaReconnectTimer=null;if(wsHeartbeat)clearInterval(wsHeartbeat);wsHeartbeat=null;if(ws){const old=ws;ws=null;try{old.close()}catch{}}alpacaAuthenticated=false;alpacaSubscribedKey="";alpacaSubscribedSymbols=[]}
+function restartLiveFeed(force=false){if(!finnhubReady()){closeLiveFeed();return}if(!force&&ws&&ws.readyState===WebSocket.OPEN){finnhubConnected=true;finnhubSubscribe();return}startFinnhubStream()}
+function closeLiveFeed(manual=true){finnhubGeneration++;if(manual)finnhubManualClose=true;clearTimeout(finnhubReconnectTimer);finnhubReconnectTimer=null;if(wsHeartbeat)clearInterval(wsHeartbeat);wsHeartbeat=null;if(ws){const old=ws;ws=null;try{old.close()}catch{}}finnhubConnected=false;finnhubSubscribedSymbols=[]}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 async function refreshAllAnalyses(force=false){if(!secrets.twelveKey||document.hidden)return;const a=acc(),refs=(a?.stocks||[]).filter(s=>!calc(s,a).complete&&marketOf(s,a)==="US");for(const s of refs){try{await analyzeStock(s,a,force,false)}catch{}await sleep(220)}}
 async function refreshEverything(showAlert=false){await refreshQuotes(showAlert)}
-async function quoteLoop(){clearTimeout(quoteTimer);if(document.hidden){quoteTimer=setTimeout(quoteLoop,60000);return}if(alpacaReady()){alpacaSubscribe();quoteTimer=setTimeout(quoteLoop,15000);return}if(editingAnalysisId)await refreshFocusedQuote();else await refreshQuotes(false);quoteTimer=setTimeout(quoteLoop,editingAnalysisId?60000:quotaAwareRefreshSec()*1000)}
-function restartTimers(){clearTimeout(quoteTimer);clearInterval(analysisTimer);clearInterval(liveUiTimer);quoteTimer=setTimeout(quoteLoop,1200);analysisTimer=setInterval(()=>{if(editingAnalysisId&&!document.hidden)refreshCurrentAnalysis(false,true)},60*1000);liveUiTimer=setInterval(()=>{if(!document.hidden&&alpacaReady())renderLiveViews()},1000)}
-function refreshOnForeground(){if(document.hidden)return;if(alpacaReady()){if(!ws||ws.readyState!==WebSocket.OPEN)restartLiveFeed(false);else alpacaSubscribe();renderLiveViews();return}const due=Math.max(60,Math.floor(quotaAwareRefreshSec()*0.75))*1000;if(Date.now()-lastQuoteRefreshAt>due){if(editingAnalysisId)refreshFocusedQuote();else refreshQuotes(false)}else renderLiveViews()}
+async function quoteLoop(){clearTimeout(quoteTimer);if(document.hidden){quoteTimer=setTimeout(quoteLoop,60000);return}if(finnhubReady()){finnhubSubscribe();quoteTimer=setTimeout(quoteLoop,15000);return}if(editingAnalysisId)await refreshFocusedQuote();else await refreshQuotes(false);quoteTimer=setTimeout(quoteLoop,editingAnalysisId?60000:quotaAwareRefreshSec()*1000)}
+function restartTimers(){clearTimeout(quoteTimer);clearInterval(analysisTimer);clearInterval(liveUiTimer);quoteTimer=setTimeout(quoteLoop,1200);analysisTimer=setInterval(()=>{if(editingAnalysisId&&!document.hidden)refreshCurrentAnalysis(false,true)},60*1000);liveUiTimer=setInterval(()=>{if(!document.hidden&&finnhubReady())renderLiveViews()},1000)}
+function refreshOnForeground(){if(document.hidden)return;if(finnhubReady()){if(!ws||ws.readyState!==WebSocket.OPEN)restartLiveFeed(false);else finnhubSubscribe();renderLiveViews();return}const due=Math.max(60,Math.floor(quotaAwareRefreshSec()*0.75))*1000;if(Date.now()-lastQuoteRefreshAt>due){if(editingAnalysisId)refreshFocusedQuote();else refreshQuotes(false)}else renderLiveViews()}
 
 function exportData(){let copy=JSON.parse(JSON.stringify(state));let b=new Blob([JSON.stringify(copy,null,2)],{type:"application/json"}),u=URL.createObjectURL(b),a=document.createElement("a");a.href=u;a.download="stock-accounts-backup.json";a.click();URL.revokeObjectURL(u)}
 function importData(e){let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{try{let x=normalizeState(JSON.parse(r.result));state=x;save();render();restartLiveFeed();restartTimers();refreshQuotes(false);alert("Backup imported. API keys were not changed.")}catch{alert("Invalid backup file.")}};r.readAsText(f);e.target.value=""}
 function toggleTheme(){let h=document.documentElement,n=(h.getAttribute("data-theme")||"light")==="dark"?"light":"dark";h.setAttribute("data-theme",n);localStorage.setItem(THEME,n)}
 
 document.documentElement.setAttribute("data-theme",localStorage.getItem(THEME)||(matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light"));
-render();restartLiveFeed();restartTimers();if(!alpacaReady())setTimeout(()=>refreshQuotes(false),500);
+render();restartLiveFeed();restartTimers();if(!finnhubReady())setTimeout(()=>refreshQuotes(false),500);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshOnForeground()});
 window.addEventListener("focus",refreshOnForeground);
 window.addEventListener("pageshow",refreshOnForeground);
