@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f172a">
-<title>Stock Account Tracker — Pro Daily Trader v10.2 — No Pop-ups</title>
+<title>Stock Account Tracker — Pro Probabilistic Trader v11</title>
 <style>
 :root{--bg:#f4f7fb;--card:#fff;--text:#172033;--muted:#667085;--line:#d9e0ea;--accent:#2563eb;--green:#087443;--greenbg:#ecfdf3;--red:#b42318;--redbg:#fef3f2;--amber:#a15c00;--amberbg:#fff7e6}
 [data-theme=dark]{--bg:#0b1220;--card:#111827;--text:#f8fafc;--muted:#9ca3af;--line:#2b3648;--accent:#60a5fa;--green:#34d399;--greenbg:#0d2a22;--red:#fb7185;--redbg:#32151a;--amber:#fbbf24;--amberbg:#2f2610}
@@ -16,7 +16,7 @@
 </head>
 <body>
 <div class="app">
-  <div class="top"><div><h1>Stock Accounts</h1><div class="sub">Real-time US pricing, separate watch analysis, multi-day position planning, and profit-protection guidance.</div></div><button class="theme" onclick="toggleTheme()">◐</button></div>
+  <div class="top"><div><h1>Stock Accounts</h1><div class="sub">Real-time US pricing, fresh-entry watch ideas, probability-based trade forecasts, and position profit management.</div></div><button class="theme" onclick="toggleTheme()">◐</button></div>
   <div id="appStatus" class="inlineStatus info" aria-live="polite"></div>
   <div class="viewnav"><button id="portfolioViewBtn" class="primary" onclick="setMainView('portfolio')">Portfolio</button><button id="considerViewBtn" class="secondary" onclick="setMainView('considering')">Considering Stocks</button></div>
   <div id="portfolioView">
@@ -37,7 +37,7 @@
   </div>
   <div id="consideringView" class="viewHidden">
     <div class="card toolbar"><input id="considerSearch" placeholder="Search considering stocks..." oninput="renderConsidering()"><button class="secondary" onclick="refreshQuotes(true)">Refresh Live</button><button class="secondary" onclick="openSettings()">Settings</button><button class="primary" onclick="openConsider()">+ Analyze New Stock</button></div>
-    <div class="section"><h2>Considering Stocks</h2><p>Analysis only. These tickers are completely separate from your purchased accounts and never affect portfolio totals.</p></div>
+    <div class="section"><h2>Considering Stocks</h2><p>Fresh-purchase analysis only. You can add a ticker even if you already own it; the watch idea is treated as a completely new entry and never affects portfolio totals.</p></div>
     <div id="consideringList" class="list"></div>
   </div>
   <div class="footer"><button class="secondary" onclick="exportData()">Export Backup</button><button class="secondary" onclick="document.getElementById('importFile').click()">Import Backup</button><input id="importFile" type="file" accept=".json" hidden onchange="importData(event)"></div>
@@ -83,7 +83,7 @@
     <div><label>Finnhub API Key</label><input id="finnhubKey" type="password" autocomplete="off" placeholder="Free real-time US WebSocket feed"></div>
     <div><label>Alpha Vantage News API Key</label><input id="alphaKey" type="password" autocomplete="off" placeholder="Optional — for stock news"></div>
   </div>
-  <div class="note" style="margin-top:14px">Finnhub WebSocket trades drive the current US price and are classified into pre-market, regular-session, and post-market values as they arrive. Twelve Data is reserved for chart analysis / REST fallback. Purchased positions use their own profit goal and maximum recovery-share cap. The analyzer can hold a winner across sessions, tighten a dynamic sell guard, or show when a technically supported recovery buy is reasonable. All signals stay inside the app; no browser notifications or automatic pop-up alerts are used.</div>
+  <div class="note" style="margin-top:14px">Finnhub WebSocket trades drive the current US price and are classified into pre-market, regular-session, and post-market values as they arrive. Twelve Data is reserved for chart analysis / REST fallback. Purchased positions use their own profit goal and maximum recovery-share cap. The analyzer combines live technical structure with a historical analog forecast, can hold a winner across sessions, tighten a dynamic sell guard, or show when a technically supported recovery buy is reasonable. All signals stay inside the app; no browser notifications or automatic pop-up alerts are used.</div>
   <div class="mact"><button class="secondary" onclick="testConnection()">Test Twelve Data</button><button class="secondary" onclick="testLiveStream()">Test Live Stream</button><button class="primary" onclick="saveSettings()">Save</button></div>
 </div></div>
 
@@ -122,12 +122,12 @@
     <div><label>Company Name (optional)</label><input id="considerName" placeholder="Optional"></div>
     <div><label>Market</label><select id="considerMarket"><option value="US">US</option><option value="TSX">TSX</option></select></div>
   </div>
-  <div class="note" style="margin-top:14px">This saves the ticker only to the Considering list and runs the same professional analyzer used for owned positions. It does not change portfolio totals or record a purchase.</div>
+  <div class="note" style="margin-top:14px">This creates a fresh-entry trade idea in Considering, even if you already own the same ticker. It does not use your existing cost basis, change portfolio totals, or record a purchase.</div>
   <div class="mact"><button class="secondary" onclick="closeConsider()">Cancel</button><button class="primary" onclick="saveConsiderAndAnalyze()">Analyze & Save</button></div>
 </div></div>
 
 <div id="analysisModal" class="modal"><div class="sheet">
-  <div class="mhead"><h3 id="analysisTitle">Daily Trading Analysis</h3><button class="secondary" onclick="closeAnalysis()">Close</button></div>
+  <div class="mhead"><h3 id="analysisTitle">Probabilistic Trading Analysis</h3><button class="secondary" onclick="closeAnalysis()">Close</button></div>
   <div id="analysisBody"><div class="empty">Loading analysis…</div></div>
   <div class="mact"><button class="secondary" onclick="refreshCurrentAnalysis(true)">Refresh Analysis</button><button id="analysisAddButton" class="primary" style="display:none" onclick="addCurrentAnalysisToPortfolio()">Add to Portfolio</button></div>
 </div></div>
@@ -141,7 +141,7 @@ let mainView="portfolio",appStatusTimer=null;
 const confirmMemory={};
 
 function uid(){return crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random())}
-function base(){let a=[{id:uid(),name:"TFSA",stocks:[]},{id:uid(),name:"FHSA",stocks:[]},{id:uid(),name:"Other",stocks:[]}];return{settings:{currency:"CAD",defaultBuy:6.95,defaultSell:6.95,dailyProfitTarget:10,defaultPositionProfitTarget:100,defaultMaxAdditionalShares:10,tradeAlerts:false},accounts:a,activeAccountId:a[0].id,sharedPrices:{},priceModes:{},marketData:{refreshSec:120,includeExtended:false,restStabilityV2:true,strategyVersion:7},analysisCache:{},considering:[],profitGuards:{}}}
+function base(){let a=[{id:uid(),name:"TFSA",stocks:[]},{id:uid(),name:"FHSA",stocks:[]},{id:uid(),name:"Other",stocks:[]}];return{settings:{currency:"CAD",defaultBuy:6.95,defaultSell:6.95,dailyProfitTarget:10,defaultPositionProfitTarget:100,defaultMaxAdditionalShares:10,tradeAlerts:false},accounts:a,activeAccountId:a[0].id,sharedPrices:{},priceModes:{},marketData:{refreshSec:120,includeExtended:false,restStabilityV2:true,strategyVersion:8},analysisCache:{},considering:[],profitGuards:{}}}
 function normalizeState(s){
   if(!s||!Array.isArray(s.accounts))return base();
   s.settings=s.settings||{};
@@ -150,8 +150,8 @@ function normalizeState(s){
   s.settings.defaultSell=s.settings.defaultSell??s.settings.defaultSellCommission??6.95;
   s.settings.dailyProfitTarget=s.settings.dailyProfitTarget??10;s.settings.defaultPositionProfitTarget=s.settings.defaultPositionProfitTarget??100;s.settings.defaultMaxAdditionalShares=s.settings.defaultMaxAdditionalShares??10;s.settings.tradeAlerts=false;
   s.sharedPrices=s.sharedPrices||{};s.priceModes=s.priceModes||{};s.marketData=s.marketData||{};s.analysisCache=s.analysisCache||{};s.considering=Array.isArray(s.considering)?s.considering:[];s.profitGuards=s.profitGuards||{};
-  s.considering=s.considering.map(c=>({id:c.id||`consider-${uid()}`,ticker:String(c.ticker||"").trim().toUpperCase(),name:c.name||"",market:c.market||"US",saleCommission:Number(c.saleCommission??s.settings.defaultSell??6.95),currentPrice:Number(c.currentPrice||0)})).filter(c=>c.ticker);
-  if(Number(s.marketData.strategyVersion||0)!==7){s.analysisCache={};s.marketData.strategyVersion=7}
+  s.considering=s.considering.map(c=>({id:c.id||`consider-${uid()}`,ticker:String(c.ticker||"").trim().toUpperCase(),name:c.name||"",market:c.market||"US",saleCommission:Number(c.saleCommission??s.settings.defaultSell??6.95),currentPrice:Number(c.currentPrice||0),freshEntry:true})).filter(c=>c.ticker);
+  if(Number(s.marketData.strategyVersion||0)!==8){s.analysisCache={};s.marketData.strategyVersion=8}
   delete s.marketData.alpacaFeed;s.marketData.refreshSec=Math.max(60,Number(s.marketData.refreshSec)||120);if(!s.marketData.restStabilityV2){s.marketData.includeExtended=false;s.marketData.refreshSec=Math.max(120,s.marketData.refreshSec);s.marketData.restStabilityV2=true}else{s.marketData.includeExtended=Boolean(s.marketData.includeExtended)};
   s.accounts.forEach(a=>{a.stocks=(a.stocks||[]).map(st=>{st.sales=st.sales||[];st.purchases=st.purchases||[];st.market=st.market||"AUTO";st.distribution=st.distribution||{amount:0,frequency:"monthly",exDate:"",source:"manual",lastUpdated:""};st.deposits=st.deposits||[];st.desiredProfit=Math.max(0,Number(st.desiredProfit??s.settings.defaultPositionProfitTarget??100));st.maxAdditionalShares=Math.max(0,Math.floor(Number(st.maxAdditionalShares??s.settings.defaultMaxAdditionalShares??10)));const t=(st.ticker||"").toUpperCase();if(t&&s.sharedPrices[t]===undefined&&Number.isFinite(Number(st.currentPrice)))s.sharedPrices[t]=Number(st.currentPrice)||0;if(t&&!s.priceModes[t])s.priceModes[t]={mode:"live",manual:Number(s.sharedPrices[t]??st.currentPrice??0),lastLive:null,lastUpdated:""};return st})});
   if(!s.accounts.some(a=>a.id===s.activeAccountId))s.activeAccountId=s.accounts[0]?.id;
@@ -240,6 +240,7 @@ function setAppStatus(message,type="info",timeout=6000){const e=statusHost();if(
 function popupFreeConfirm(message){const key=String(message||"confirm"),now=Date.now(),last=confirmMemory[key]||0;if(now-last>5000){confirmMemory[key]=now;setAppStatus(`${key} Click the same action again within 5 seconds to confirm.`,"warning",5000);return false}delete confirmMemory[key];return true}
 window.alert=(message)=>setAppStatus(message,/failed|error|invalid|could not|cannot|unavailable/i.test(String(message))?"error":"info");
 window.confirm=(message)=>popupFreeConfirm(message);
+window.prompt=()=>{setAppStatus("Direct prompt windows are disabled. Use the fields inside the app instead.","info");return null};
 function showTradeAlert(){/* Trading guidance is displayed inline only. No automatic popup, sound, or browser notification. */}
 async function enableTradeAlerts(){state.settings.tradeAlerts=false;save();setAppStatus("Trading signals are shown inside the stock card and analysis only. Pop-up alerts are disabled.","info")}
 function evaluateTradingAlerts(){for(const a of state.accounts||[])for(const s of a.stocks||[]){const c=calc(s,a);if(c.complete||c.remaining<=0)continue;const base=runtimeAnalysis[s.id]||state.analysisCache?.[s.id];if(!base)continue;const an=applyLiveAnalysisOverlay(s,a,base),px=effectivePrice(s,a);if(an.signal==="TAKE PROFIT NOW")showTradeAlert(`${s.ticker}: TAKE PROFIT`,`${money(px)} now. Dynamic sell guard ${an.profitGuard?money(an.profitGuard):"—"}. Estimated net ${money(an.currentNet)}.`,`sell-now-${s.id}-${Math.round(px*100)}`);else if(an.sellAlertPrice&&an.holdingHorizon&&an.holdingHorizon.startsWith("Today")&&px>=an.sellAlertPrice)showTradeAlert(`${s.ticker}: sell zone reached`,`Price ${money(px)} reached today’s chart sell zone near ${money(an.sellAlertPrice)}. Re-open Analyze before placing the sell order.`,`sell-zone-${s.id}`);if(an.recoveryPlan?.active&&px>=an.recoveryPlan.buyLow&&px<=an.recoveryPlan.buyHigh)showTradeAlert(`${s.ticker}: recovery buy zone`,`Chart stabilization is active near ${money(an.recoveryPlan.buyPrice)}. Suggested maximum ${fmt(an.recoveryPlan.qty)} extra shares (cap ${maxRecoveryShares(s)}).`,`recovery-${s.id}-${Math.round(an.recoveryPlan.buyPrice*100)}`)}}
@@ -252,18 +253,28 @@ function renderConsidering(){
   consideringList.innerHTML=items.length?items.map(consideringCard).join(""):'<div class="empty">No new stocks being considered. Tap Analyze New Stock to screen a ticker before buying.</div>'
 }
 function consideringCard(s){
-  const a={id:"considering",name:"Considering",stocks:[]},p=effectivePrice(s,a),qs=quoteStatus(s,a);let an=runtimeAnalysis[s.id]||state.analysisCache?.[s.id];if(an&&new Date(Number(an.updatedAt||0)).toDateString()!==new Date().toDateString())an=null;if(an)an=applyLiveAnalysisOverlay(s,a,an);const sig=an?.signal||"Analysis pending today",sigClass=an?.signalClass||"sig-watch",summary=an?`${an.entryText||"—"} → ${an.tp?money(an.tp):"—"}`:"Tap Analyze for today’s plan";
-  return `<div class="card stock"><div class="head"><div><div class="ticker">${esc(s.ticker)}</div><div class="name">${esc(s.name||"")} <span class="sourceBadge">${esc(s.market||"US")}</span> <span class="sourceBadge">Considering</span></div></div><div class="quoteBox"><div class="quotePrice">${p>0?money(p):"—"}</div><div class="status ${qs.cls}">${esc(qs.label)}</div>${marketOf(s,a)==="US"?`<div class="sessionLine">${esc(sessionPriceLine(s.ticker))}</div>`:""}</div></div><div class="analysisStrip"><div><strong class="${sigClass}">${esc(sig)}</strong><div class="mini">${esc(summary)}</div></div><button class="secondary smallbtn" onclick="openAnalysis('${s.id}')">Details</button></div><div class="actions"><button class="primary" onclick="openAnalysis('${s.id}')">Analyze</button><button class="secondary" onclick="addConsideringToPortfolio('${s.id}')">Add to Portfolio</button><button class="danger" onclick="removeConsidering('${s.id}')">Remove</button></div></div>`
+  const a={id:"considering",name:"Considering",stocks:[]},p=effectivePrice(s,a),qs=quoteStatus(s,a),alsoOwned=allStockRefs().some(({s:x,a:xa})=>(x.ticker||"").toUpperCase()===(s.ticker||"").toUpperCase()&&!calc(x,xa).complete);
+  let an=runtimeAnalysis[s.id]||state.analysisCache?.[s.id];if(an&&new Date(Number(an.updatedAt||0)).toDateString()!==new Date().toDateString())an=null;if(an)an=applyLiveAnalysisOverlay(s,a,an);
+  const sig=an?.signal||"Analysis pending today",sigClass=an?.signalClass||"sig-watch",f=an?.forecast,forecastText=f?`Forecast ${Math.round((f.targetProb3||0)*100)}% target / ${Math.round((f.stopProb3||0)*100)}% stop • ${f.bias}`:"";
+  const summary=an?`${forecastText?forecastText+" • ":""}${an.entryText||"—"} → ${an.tp?money(an.tp):"—"}`:"Tap Analyze for a fresh-entry plan";
+  return `<div class="card stock"><div class="head"><div><div class="ticker">${esc(s.ticker)}</div><div class="name">${esc(s.name||"")} <span class="sourceBadge">${esc(s.market||"US")}</span> <span class="sourceBadge">Fresh Entry</span>${alsoOwned?' <span class="sourceBadge">Also Owned</span>':""}</div></div><div class="quoteBox"><div class="quotePrice">${p>0?money(p):"—"}</div><div class="status ${qs.cls}">${esc(qs.label)}</div>${marketOf(s,a)==="US"?`<div class="sessionLine">${esc(sessionPriceLine(s.ticker))}</div>`:""}</div></div><div class="analysisStrip"><div><strong class="${sigClass}">${esc(sig)}</strong><div class="mini">${esc(summary)}</div></div><button class="secondary smallbtn" onclick="openAnalysis('${s.id}')">Details</button></div><div class="actions"><button class="primary" onclick="openAnalysis('${s.id}')">Analyze</button><button class="secondary" onclick="addConsideringToPortfolio('${s.id}')">Add to Portfolio</button><button class="danger" onclick="removeConsidering('${s.id}')">Remove</button></div></div>`
 }
 function renderStocks(){let q=search.value.trim().toLowerCase(),ss=(acc()?.stocks||[]).filter(s=>(s.ticker||"").toLowerCase().includes(q)||(s.name||"").toLowerCase().includes(q)),a=ss.filter(s=>!calc(s,acc()).complete),d=ss.filter(s=>calc(s,acc()).complete);activeList.innerHTML=a.length?a.map(s=>card(s,acc())).join(""):'<div class="empty">No active positions in this account.</div>';soldList.innerHTML=d.length?d.map(s=>card(s,acc())).join(""):'<div class="empty">No completely sold positions in this account.</div>'}
-function card(s,a){let c=calc(s,a),total=c.realized+(c.complete?0:c.unrealized)+c.income,cl=total>=0?"positive":"negative",qs=quoteStatus(s,a),p=effectivePrice(s,a),yieldPct=distributionYield(s,a),expected=Number(s.distribution?.amount||0)*c.remaining,an=runtimeAnalysis[s.id]||state.analysisCache?.[s.id];if(an&&new Date(Number(an.updatedAt||0)).toDateString()!==new Date().toDateString())an=null;if(an)an=applyLiveAnalysisOverlay(s,a,an);let sig,sigClass,anText;if(an){sig=an.signal||"Analysis pending today";sigClass=an.signalClass||"sig-watch";anText=an.positionMode?`${an.profitGoal?`Goal ${money(an.profitGoal)} • `:""}${an.profitGuard?`Guard ${money(an.profitGuard)} • `:""}${an.holdingHorizon||""}`:`${an.h4Trend?`${an.h4Trend}/${an.h1Trend}/${an.m5Trend} • `:""}${an.entryText||"—"} → ${an.tp?money(an.tp):"—"}`}else if(!c.complete&&p>=c.breakEven&&c.breakEven>0){sig="BREAK-EVEN REACHED — ANALYZE EXIT";sigClass="sig-buy";anText=`Break-even ${money(c.breakEven)} • Net now ${money(c.unrealized)}`}else{sig="Analysis pending today";sigClass="sig-watch";anText="Tap Analyze for today’s plan"}return `<div class="card stock"><div class="head"><div><div class="ticker">${esc(s.ticker)}</div><div class="name">${esc(s.name||"")} ${marketOf(s,a)==="TSX"?'<span class="sourceBadge">TSX</span>':'<span class="sourceBadge">US</span>'}</div></div><div class="quoteBox"><div class="quotePrice">${money(p)}</div><div class="status ${qs.cls}">${esc(qs.label)}</div>${marketOf(s,a)==="US"?`<div class="sessionLine">${esc(sessionPriceLine(s.ticker))}</div>`:""}<div class="chip ${cl}" style="margin-top:7px">${money(total)}</div></div></div><div class="grid"><div><div class="sl">Bought</div><div class="sv">${fmt(c.bought)}</div></div><div><div class="sl">Sold</div><div class="sv">${fmt(c.sold)}</div></div><div><div class="sl">Remaining</div><div class="sv">${fmt(c.remaining)}</div></div><div><div class="sl">Current Price</div><div class="sv">${money(p)}</div></div><div><div class="sl">Avg Buy / Share</div><div class="sv">${money(c.avgBuy)}</div></div><div><div class="sl">Total Purchase Cost</div><div class="sv">${money(c.totalCost)}</div></div><div><div class="sl">Break-Even</div><div class="sv">${c.complete?"—":money(c.breakEven)}</div></div><div><div class="sl">Realized</div><div class="sv ${c.realized>=0?"positive":"negative"}">${money(c.realized)}</div></div><div><div class="sl">Unrealized</div><div class="sv ${c.unrealized>=0?"positive":"negative"}">${c.complete?"—":money(c.unrealized)}</div></div><div><div class="sl">Deposited Income</div><div class="sv ${c.income>=0?"positive":"negative"}">${money(c.income)}</div></div></div>${Number(s.distribution?.amount||0)>0?`<div class="incomeLine">Distribution: ${money(s.distribution.amount)}/share • Annualized yield ${pct(yieldPct)} • Expected on current shares ${money(expected)}</div>`:""}${c.complete?"":`<div class="planLine">Position goal ${money(positionProfitGoal(s))} net • Recovery cap +${fmt(maxRecoveryShares(s))} shares</div><div class="analysisStrip"><div><strong class="${sigClass}">${esc(sig)}</strong><div class="mini">${esc(anText)}</div></div><button class="secondary smallbtn" onclick="openAnalysis('${s.id}')">Details</button></div>`}<div class="actions">${c.complete?"":`<button class="secondary" onclick="openAnalysis('${s.id}')">Analyze</button>${p<c.breakEven?`<button class="secondary" onclick="openRecovery('${s.id}')">Recovery</button>`:""}<button class="secondary" onclick="openDividend('${s.id}')">Dividend</button>`}<button class="secondary" onclick="openStock('${s.id}')">${c.complete?"View / Edit":"Buy / Sell / Edit"}</button><button class="danger" onclick="deleteStock('${s.id}')">Delete</button></div></div>`}
+function card(s,a){let c=calc(s,a),total=c.realized+(c.complete?0:c.unrealized)+c.income,cl=total>=0?"positive":"negative",qs=quoteStatus(s,a),p=effectivePrice(s,a),yieldPct=distributionYield(s,a),expected=Number(s.distribution?.amount||0)*c.remaining,an=runtimeAnalysis[s.id]||state.analysisCache?.[s.id];if(an&&new Date(Number(an.updatedAt||0)).toDateString()!==new Date().toDateString())an=null;if(an)an=applyLiveAnalysisOverlay(s,a,an);let sig,sigClass,anText;if(an){sig=an.signal||"Analysis pending today";sigClass=an.signalClass||"sig-watch";anText=an.positionMode?`${an.profitGoal?`Goal ${money(an.profitGoal)} • `:""}${an.profitGuard?`Guard ${money(an.profitGuard)} • `:""}${an.holdingHorizon||""}${an.forecast?` • Forecast ${Math.round(an.forecast.targetProb3*100)}%`:""}`:`${an.forecast?`${Math.round(an.forecast.targetProb3*100)}% target • `:""}${an.h4Trend?`${an.h4Trend}/${an.h1Trend}/${an.m5Trend} • `:""}${an.entryText||"—"} → ${an.tp?money(an.tp):"—"}`}else if(!c.complete&&p>=c.breakEven&&c.breakEven>0){sig="BREAK-EVEN REACHED — ANALYZE EXIT";sigClass="sig-buy";anText=`Break-even ${money(c.breakEven)} • Net now ${money(c.unrealized)}`}else{sig="Analysis pending today";sigClass="sig-watch";anText="Tap Analyze for today’s plan"}return `<div class="card stock"><div class="head"><div><div class="ticker">${esc(s.ticker)}</div><div class="name">${esc(s.name||"")} ${marketOf(s,a)==="TSX"?'<span class="sourceBadge">TSX</span>':'<span class="sourceBadge">US</span>'}</div></div><div class="quoteBox"><div class="quotePrice">${money(p)}</div><div class="status ${qs.cls}">${esc(qs.label)}</div>${marketOf(s,a)==="US"?`<div class="sessionLine">${esc(sessionPriceLine(s.ticker))}</div>`:""}<div class="chip ${cl}" style="margin-top:7px">${money(total)}</div></div></div><div class="grid"><div><div class="sl">Bought</div><div class="sv">${fmt(c.bought)}</div></div><div><div class="sl">Sold</div><div class="sv">${fmt(c.sold)}</div></div><div><div class="sl">Remaining</div><div class="sv">${fmt(c.remaining)}</div></div><div><div class="sl">Current Price</div><div class="sv">${money(p)}</div></div><div><div class="sl">Avg Buy / Share</div><div class="sv">${money(c.avgBuy)}</div></div><div><div class="sl">Total Purchase Cost</div><div class="sv">${money(c.totalCost)}</div></div><div><div class="sl">Break-Even</div><div class="sv">${c.complete?"—":money(c.breakEven)}</div></div><div><div class="sl">Realized</div><div class="sv ${c.realized>=0?"positive":"negative"}">${money(c.realized)}</div></div><div><div class="sl">Unrealized</div><div class="sv ${c.unrealized>=0?"positive":"negative"}">${c.complete?"—":money(c.unrealized)}</div></div><div><div class="sl">Deposited Income</div><div class="sv ${c.income>=0?"positive":"negative"}">${money(c.income)}</div></div></div>${Number(s.distribution?.amount||0)>0?`<div class="incomeLine">Distribution: ${money(s.distribution.amount)}/share • Annualized yield ${pct(yieldPct)} • Expected on current shares ${money(expected)}</div>`:""}${c.complete?"":`<div class="planLine">Position goal ${money(positionProfitGoal(s))} net • Recovery cap +${fmt(maxRecoveryShares(s))} shares</div><div class="analysisStrip"><div><strong class="${sigClass}">${esc(sig)}</strong><div class="mini">${esc(anText)}</div></div><button class="secondary smallbtn" onclick="openAnalysis('${s.id}')">Details</button></div>`}<div class="actions">${c.complete?"":`<button class="secondary" onclick="openAnalysis('${s.id}')">Analyze</button>${p<c.breakEven?`<button class="secondary" onclick="openRecovery('${s.id}')">Recovery</button>`:""}<button class="secondary" onclick="openDividend('${s.id}')">Dividend</button>`}<button class="secondary" onclick="openStock('${s.id}')">${c.complete?"View / Edit":"Buy / Sell / Edit"}</button><button class="danger" onclick="deleteStock('${s.id}')">Delete</button></div></div>`}
 function renderSummary(){let av=0,ac=0,u=0,r=0,i=0;(acc()?.stocks||[]).forEach(s=>{let c=calc(s,acc());av+=c.activeValue;ac+=c.activeCost;u+=c.complete?0:c.unrealized;r+=c.realized;i+=c.income});setM("activeValue",money(av));setM("activeCost",money(ac));setM("unrealized",money(u),u);setM("realized",money(r),r);setM("income",money(i),i);setM("totalProfit",money(u+r+i),u+r+i)}
 function setM(id,t,s=null){let e=document.getElementById(id);e.textContent=t;e.classList.remove("positive","negative");if(s!==null)e.classList.add(s>=0?"positive":"negative")}
 
 function openConsider(){considerTicker.value="";considerName.value="";considerMarket.value="US";considerModal.classList.add("open");setTimeout(()=>considerTicker.focus(),50)}
 function closeConsider(){considerModal.classList.remove("open")}
 function removeConsidering(id){const s=(state.considering||[]).find(x=>x.id===id);if(!s)return;if(confirm(`Remove ${s.ticker} from Considering?`)){state.considering=state.considering.filter(x=>x.id!==id);delete state.analysisCache[id];delete runtimeAnalysis[id];save();render()}}
-function saveConsiderAndAnalyze(){const t=considerTicker.value.trim().toUpperCase(),name=considerName.value.trim(),market=considerMarket.value||"US";if(!t)return alert("Enter a ticker.");const owned=allStockRefs().find(({s})=>(s.ticker||"").toUpperCase()===t&&!calc(s).complete);if(owned){closeConsider();alert(`${t} is already in your portfolio. Opening its existing analysis instead.`);return openAnalysis(owned.s.id)}let c=(state.considering||[]).find(x=>(x.ticker||"").toUpperCase()===t&&x.market===market);if(!c){c={id:`consider-${uid()}`,ticker:t,name,market,saleCommission:Number(state.settings.defaultSell||0),currentPrice:Number(state.sharedPrices[t]||0)};state.considering.push(c)}else if(name)c.name=name;priceMode(t);save();closeConsider();render();openAnalysis(c.id)}
+function saveConsiderAndAnalyze(){
+  const t=considerTicker.value.trim().toUpperCase(),name=considerName.value.trim(),market=considerMarket.value||"US";
+  if(!t)return alert("Enter a ticker.");
+  let c=(state.considering||[]).find(x=>(x.ticker||"").toUpperCase()===t&&x.market===market);
+  if(!c){c={id:`consider-${uid()}`,ticker:t,name,market,saleCommission:Number(state.settings.defaultSell||0),currentPrice:Number(state.sharedPrices[t]||0),freshEntry:true};state.considering.push(c)}
+  else{if(name)c.name=name;c.freshEntry=true}
+  priceMode(t);save();closeConsider();render();restartLiveFeed();openAnalysis(c.id)
+}
 function addConsideringToPortfolio(id){const f=findConsidering(id);if(!f)return;const s=f.s,p=effectivePrice(s,f.a);openStock();pendingConsiderId=id;ticker.value=s.ticker;company.value=s.name||"";stockMarket.value=s.market||"US";currentPrice.value=p>0?p.toFixed(2):(state.sharedPrices[s.ticker]??"");currentPrice.dataset.sharedTicker=s.ticker;saleCommission.value=s.saleCommission??state.settings.defaultSell;priceHelp.textContent=`${s.ticker} is being converted from Considering. Enter your actual purchase price and quantity below; the analysis itself does not count as a trade.`}
 
 function openStock(id=null){editingId=id;purchaseRows.innerHTML="";saleRows.innerHTML="";currentPrice.dataset.sharedTicker="";if(id){let s=acc().stocks.find(x=>x.id===id);stockTitle.textContent="Update Stock";ticker.value=s.ticker;company.value=s.name||"";stockMarket.value=s.market||"AUTO";const t=(s.ticker||"").toUpperCase();const pm=priceMode(t);currentPrice.value=pm.manual??state.sharedPrices[t]??s.currentPrice??"";currentPrice.dataset.sharedTicker=t;priceHelp.textContent=`Fallback/manual ${t} price. Live valuation is separate and shared across accounts.`;saleCommission.value=s.saleCommission??state.settings.defaultSell;positionProfitTarget.value=positionProfitGoal(s);maxExtraShares.value=maxRecoveryShares(s);s.purchases.forEach(addPurchase);(s.sales||[]).forEach(addSale)}else{stockTitle.textContent="Add Stock";ticker.value="";company.value="";stockMarket.value=(acc()?.name||"").toUpperCase().includes("FHSA")?"TSX":"AUTO";currentPrice.value="";priceHelp.textContent="Enter a fallback price for a new ticker. Live mode will update it when connected.";saleCommission.value=state.settings.defaultSell;positionProfitTarget.value=state.settings.defaultPositionProfitTarget??100;maxExtraShares.value=state.settings.defaultMaxAdditionalShares??10;addPurchase()}stockModal.classList.add("open")}
@@ -313,7 +324,7 @@ function renderRecovery(){if(!editingRecoveryId)return;const f=findStock(editing
 function openAnalysis(id){editingAnalysisId=id;const f=findAnalysisTarget(id);if(!f)return;analysisTitle.textContent=`${f.s.ticker} — ${f.considering?"New Trade Analysis":"Daily Trading Analysis"}`;analysisAddButton.style.display=f.considering?"inline-block":"none";analysisModal.classList.add("open");restartLiveFeed();restartTimers();refreshCurrentAnalysis(true,false)}
 function closeAnalysis(){analysisModal.classList.remove("open");analysisAddButton.style.display="none";editingAnalysisId=null;restartLiveFeed();restartTimers()}
 function addCurrentAnalysisToPortfolio(){const id=editingAnalysisId;if(!id)return;closeAnalysis();addConsideringToPortfolio(id)}
-async function refreshCurrentAnalysis(force=false,silent=false){if(!editingAnalysisId)return;const f=findAnalysisTarget(editingAnalysisId);if(!f)return;if(!silent)analysisBody.innerHTML='<div class="empty">Updating one 5-minute history feed and current news…</div>';try{const an=await analyzeStock(f.s,f.a,force,true);renderAnalysisDetail(f.s,f.a,applyLiveAnalysisOverlay(f.s,f.a,an))}catch(e){if(!silent||!runtimeAnalysis[f.s.id])analysisBody.innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
+async function refreshCurrentAnalysis(force=false,silent=false){if(!editingAnalysisId)return;const f=findAnalysisTarget(editingAnalysisId);if(!f)return;if(!silent)analysisBody.innerHTML='<div class="empty">Updating live chart, long-history analog forecast, and current news…</div>';try{const an=await analyzeStock(f.s,f.a,force,true);renderAnalysisDetail(f.s,f.a,applyLiveAnalysisOverlay(f.s,f.a,an))}catch(e){if(!silent||!runtimeAnalysis[f.s.id])analysisBody.innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
 function renderAnalysisDetail(s,a,an){
   an=applyLiveAnalysisOverlay(s,a,an);
   const qs=quoteStatus(s,a),news=an.news||[],target=Number(state.settings.dailyProfitTarget||10),actionClass=an.signalClass||"sig-watch";
@@ -365,7 +376,13 @@ function renderAnalysisDetail(s,a,an){
     </div><div class="note" style="margin-top:10px">Includes ${money(an.buyComm)} buy commission + ${money(an.sellComm)} sell commission. The planned sell comes from the chart structure first; share count is then sized to meet your desired net profit where possible.</div>`:
     `<div class="muted">No technically qualified setup currently supports the configured profit target without forcing an unrealistic entry or exit.</div>`}
   </div>`;
-  analysisBody.innerHTML=`${positionBlock}
+  const forecastBlock=an.forecast?`<div class="result"><h4>Probability forecast — next 1–3 sessions</h4><div class="resultGrid">
+    <div><div class="sl">Bias</div><div class="big ${an.forecast.bias==="Bullish"?"positive":an.forecast.bias==="Bearish"?"negative":"warning"}">${esc(an.forecast.bias)}</div></div>
+    <div><div class="sl">Target-Hit Estimate</div><div class="big">${Math.round(an.forecast.targetProb3*100)}%</div></div>
+    <div><div class="sl">Stop-Touch Risk</div><div class="big">${Math.round(an.forecast.stopProb3*100)}%</div></div>
+    <div><div class="sl">Likely 3-Session Range</div><div class="big">${money(an.forecast.likelyLow3)}–${money(an.forecast.likelyHigh3)}</div></div>
+  </div><div class="note" style="margin-top:10px">Based on ${an.forecast.sampleSize} historically similar daily setups, then filtered by today’s H4/H1/M5 structure, VWAP, volume, Ichimoku, Volume Profile and current news. This is an empirical probability estimate, not a guaranteed prediction.${an.stretchTarget?` Stretch upside if momentum persists: ${money(an.stretchTarget)}.`:""}</div></div>`:"";
+  analysisBody.innerHTML=`${positionBlock}${forecastBlock}
   <div class="result">
     <h4>Internal confirmations</h4>
     <div class="resultGrid">
@@ -377,7 +394,7 @@ function renderAnalysisDetail(s,a,an){
     <div class="note" style="margin-top:10px">${esc(an.internalSummary||"")} ${marketOf(s,a)==="US"?`Live sessions: ${esc(sessionPriceLine(s.ticker))}.`:""}</div>
   </div>
   <div class="rows"><h3>Relevant News</h3><div class="news">${news.length?news.map(n=>`<div class="newsItem"><div class="newsTitle">${esc(n.title)}</div><div class="newsMeta">${esc(n.time)} • ${esc(n.sentiment||"Neutral")}</div></div>`).join(""):`<div class="note">${secrets.alphaKey?"No relevant recent news returned for this ticker.":"News is not connected. Add an Alpha Vantage API key in Settings; the chart engine still works without it."}</div>`}</div></div>
-  <div class="note" style="margin-top:12px">Decision-support only. The engine deliberately returns WAIT or NO TRADE when the timeframes disagree, volume does not confirm, support breaks, or the entry is already extended. Profit-guard levels can be crossed by gaps or fast markets, so they are not guaranteed sale prices.</div>`
+  <div class="note" style="margin-top:12px">Decision-support only. The forecast is probability-based rather than deterministic: it compares the current setup with similar historical setups, then requires current chart confirmation. It deliberately returns WAIT or NO TRADE when the edge is weak. Gaps, earnings, and new information can invalidate any forecast.</div>`
 }
 async function ensureAnalysisQuote(s,a){
   const t=(s.ticker||"").toUpperCase();if(marketOf(s,a)!=="US"||priceMode(t).mode==="manual")return;const age=Date.now()/1000-lastGoodQuoteTime(t),src=String(runtimeQuotes[t]?.source||"");
@@ -395,10 +412,11 @@ async function analyzeStock(s,a,force=false,includeNews=false){
   const m5Params={symbol,interval:"5min",outputsize:1200,order:"asc"};if(marketOf(s,a)==="US"&&state.marketData.includeExtended)m5Params.prepost="true";const m5Data=await tdFetch("time_series",m5Params);
   if(m5Data.status==="error"||m5Data.code)throw Error(m5Data.message||"Required chart data is unavailable for this symbol/plan.");
   const toBars=d=>(d.values||[]).map(x=>({t:x.datetime,o:Number(x.open),h:Number(x.high),l:Number(x.low),c:Number(x.close),v:Number(x.volume||0)})).filter(x=>[x.o,x.h,x.l,x.c].every(Number.isFinite)).sort((x,y)=>String(x.t).localeCompare(String(y.t)));
-  const bars=toBars(m5Data),h1Bars=aggregateSessionBars(bars,12),h4Bars=aggregateSessionBars(bars,48),dailyBars=aggregateDailyBars(bars);
+  const bars=toBars(m5Data),h1Bars=aggregateSessionBars(bars,12),h4Bars=aggregateSessionBars(bars,48),dailyBars=aggregateDailyBars(bars),longDailyRaw=await getLongDailyHistory(s,a,force);
   if(bars.length<400||h1Bars.length<30||dailyBars.length<7)throw Error("Not enough 5-minute history was returned for the professional analyzer.");
 
   const last=bars[bars.length-1],prev5=bars[bars.length-2],sessionDate=String(last.t).slice(0,10),sessionBars=bars.filter(b=>String(b.t).slice(0,10)===sessionDate);
+  const longDaily=(longDailyRaw||[]).filter(b=>String(b.t).slice(0,10)<sessionDate),forecastDaily=longDaily.length>=80?longDaily:dailyBars.filter(b=>String(b.t).slice(0,10)<sessionDate);
   const completedDaily=dailyBars.filter(b=>String(b.t).slice(0,10)<sessionDate),dailyBase=completedDaily.length>=7?completedDaily:dailyBars.slice(0,-1),prevDay=dailyBase[dailyBase.length-1],last5Daily=dailyBase.slice(-5);
   const dailyAtr=calcATR(dailyBase,Math.min(14,dailyBase.length-1)),fiveLow=Math.min(...last5Daily.map(b=>b.l)),fiveHigh=Math.max(...last5Daily.map(b=>b.h));
   const dailyTrendObj=frameTrend(dailyBase.slice(-20),5,10),h4=frameTrend(h4Bars.slice(-40),5,10),h1=frameTrend(h1Bars.slice(-80),9,21),m5=frameTrend(bars.slice(-80),9,20);
@@ -459,23 +477,33 @@ async function analyzeStock(s,a,force=false,includeNews=false){
   let tp=resistanceCandidates.length?Math.min(resistanceCandidates[0],volTarget):volTarget;
   if(tp<=entryHigh+0.45*atr)tp=entryHigh+0.85*atr;
   let stop=Math.max(0.01,Math.min(entryLow-0.65*atr,entryBase-0.50*atr));
+  const liveForecastBase=effectivePrice(s,a)>0?effectivePrice(s,a):last.c;
+  let forecast=analogForecast(forecastDaily,liveForecastBase,tp,stop),stretchTarget=0;
+  if(forecast){
+    const probableCap=forecast.likelyHigh3;
+    if(probableCap>entryHigh+0.45*atr)tp=Math.min(tp,probableCap);
+    stretchTarget=Math.max(tp,Math.min(forecast.stretchHigh3||tp,resistanceCandidates[1]||forecast.stretchHigh3||tp));
+    forecast=analogForecast(forecastDaily,liveForecastBase,tp,stop)
+  }
   const rr=(tp-entryHigh)/Math.max(0.01,entryHigh-stop);
 
+  const forecastEdge=forecast?forecast.targetProb3-forecast.stopProb3:0,forecastQualified=!forecast||(forecast.targetProb3>=0.52&&forecast.stopProb3<=0.55&&forecast.bias!=="Bearish");
   let signal="NO TRADE",signalClass="sig-no";
   if(supportBroken||sharpDrop||newsScore<-0.45){signal="NO TRADE";signalClass="sig-no"}
+  else if(forecast&&!forecastQualified){signal=forecast.stopProb3>0.60?"NO TRADE — DOWNSIDE RISK TOO HIGH":"WAIT — FORECAST EDGE TOO WEAK";signalClass=forecast.stopProb3>0.60?"sig-no":"sig-watch"}
   else if(!alignedBull){signal="WAIT — TIMEFRAMES NOT ALIGNED";signalClass="sig-watch"}
   else if(rr<0.85){signal="NO TRADE — POOR REWARD/RISK";signalClass="sig-no"}
   else if(last.c>=tp-0.12*atr&&score>=58){signal="TARGET AREA — TAKE PROFIT IF IN TRADE";signalClass="sig-watch"}
-  else if(bounceConfirmed&&score>=67){signal="BUY NOW";signalClass="sig-buy"}
+  else if(bounceConfirmed&&score>=67&&(!forecast||forecast.targetProb3>=0.57)){signal="BUY NOW";signalClass="sig-buy"}
   else if(breakoutConfirmed&&extended){signal="WAIT — BUY ONLY ON RETEST";signalClass="sig-watch"}
   else if(last.c>entryHigh+0.35*atr){signal="WAIT — DO NOT CHASE";signalClass="sig-watch"}
   else if(last.c>=entryLow-0.10*atr&&last.c<=entryHigh+0.35*atr){signal="WAIT FOR REVERSAL CONFIRMATION";signalClass="sig-watch"}
   else{signal="WAIT FOR BUY ZONE";signalClass="sig-watch"}
 
-  const confidence=score>=76?"High":score>=61?"Medium":"Low";
+  const confidence=forecast?(forecast.targetProb3>=0.68&&forecast.stopProb3<=0.35&&score>=70?"High":forecast.targetProb3>=0.55&&forecast.stopProb3<=0.55&&score>=58?"Medium":"Low"):(score>=76?"High":score>=61?"Medium":"Low");
   const target=Number(state.settings.dailyProfitTarget||10),buyComm=Number(state.settings.defaultBuy||0),sellComm=Number(s.saleCommission||state.settings.defaultSell||0),move=tp-entryHigh;
   let qtyForTarget=null,capitalRequired=null,minExitForTarget=null,estimatedNet=null;
-  const qualifiedPlan=alignedBull&&!supportBroken&&!sharpDrop&&newsScore>-0.45&&rr>=0.85&&!signal.startsWith("TARGET");
+  const qualifiedPlan=alignedBull&&!supportBroken&&!sharpDrop&&newsScore>-0.45&&rr>=0.85&&forecastQualified&&!signal.startsWith("TARGET")&&!signal.startsWith("NO TRADE");
   if(qualifiedPlan&&move>0){qtyForTarget=Math.ceil((target+buyComm+sellComm)/move);if(qtyForTarget>0&&qtyForTarget<100000){capitalRequired=qtyForTarget*entryHigh+buyComm;minExitForTarget=entryHigh+(target+buyComm+sellComm)/qtyForTarget;estimatedNet=qtyForTarget*(tp-entryHigh)-buyComm-sellComm}else qtyForTarget=null}
 
   // Owned-position profit management: once break-even has been reached, switch from entry logic to a dynamic exit discipline.
@@ -484,9 +512,10 @@ async function analyzeStock(s,a,force=false,includeNews=false){
   if(ownedPosition){
     const pc=calc(s,a),livePrice=effectivePrice(s,a)>0?effectivePrice(s,a):last.c,pg=updateProfitGuardForStock(s,a,livePrice,sessionHigh);
     positionMode=true;positionBreakEven=pc.breakEven;profitGoal=positionProfitGoal(s);profitGoalPrice=pc.breakEven+(profitGoal/Math.max(pc.remaining,1e-9));currentNet=pc.unrealized;profitGoalReached=currentNet>=profitGoal&&profitGoal>0;if(livePrice<pc.breakEven){signal="WAIT — DO NOT AVERAGE DOWN YET";signalClass="sig-watch";setup="Owned position recovery management";positionReason="Price is below break-even. The app will only suggest extra shares after price reaches a chart support area and the 5-minute action stabilizes."}
-    const strongContinuation=h4.trend==="Bullish"&&h1.trend==="Bullish"&&m5.trend==="Bullish"&&last.c>vwap&&ich5.state!=="Bearish"&&newsScore>-0.30;
+    const strongContinuation=h4.trend==="Bullish"&&h1.trend==="Bullish"&&m5.trend==="Bullish"&&last.c>vwap&&ich5.state!=="Bearish"&&newsScore>-0.30&&(!forecast||forecast.bias!=="Bearish");
     const goalDistance=Math.max(0,profitGoalPrice-livePrice),dAtr=Math.max(dailyAtr,atr*3,livePrice*0.004);
-    holdingHorizon=goalDistance<=0?"Goal reached":strongContinuation&&goalDistance<=0.55*dAtr?"Today / next active session":h4.trend==="Bullish"&&h1.trend==="Bullish"&&goalDistance<=1.5*dAtr?"1–3 sessions":dailyTrendObj.trend==="Bullish"&&goalDistance<=3*dAtr?"Several sessions":"Not currently supported";
+    const goalMove=livePrice>0?goalDistance/livePrice:0,goalProb3=forecast?probabilityForMoveFromForecast(forecast,goalMove,3):null;
+    holdingHorizon=goalDistance<=0?"Goal reached":strongContinuation&&goalDistance<=0.55*dAtr&&(!forecast||forecast.targetProb1>=0.48)?"Today / next active session":h4.trend==="Bullish"&&h1.trend==="Bullish"&&goalDistance<=1.5*dAtr&&(!forecast||goalProb3>=0.48)?"1–3 sessions":dailyTrendObj.trend==="Bullish"&&goalDistance<=3*dAtr&&(!forecast||goalProb3>=0.40)?"Several sessions":"Not currently supported";
     const technicalUps=[profile?.vah,prevDay?.h,fiveHigh,intradayResistance,orHigh].filter(x=>Number.isFinite(x)&&x>livePrice+0.20*atr).sort((x,y)=>x-y);
     nextUpsideTarget=technicalUps.length?technicalUps[0]:livePrice+Math.max(1.0*atr,0.12*Math.max(dailyAtr,atr));sellAlertPrice=Math.max(livePrice,Math.min(profitGoalPrice,nextUpsideTarget||profitGoalPrice));
     if(pg?.activated){
@@ -519,14 +548,14 @@ async function analyzeStock(s,a,force=false,includeNews=false){
   if(volRatio>=1.2)concise.push(`volume ${volRatio.toFixed(1)}× recent average`);
   if(newsScore<-0.3)concise.push("negative news");
   const reason=concise.join(" • ");
-  const internalSummary=`Rule-based score ${Math.round(score)}/100 (not a probability). ${checks.slice(0,7).join(" • ")}. Volume Profile uses ${completedDates.length||0} completed sessions.`;
+  const internalSummary=`Technical score ${Math.round(score)}/100. ${forecast?`Historical analog forecast uses ${forecast.sampleSize} nearest setups: ${Math.round(forecast.targetProb3*100)}% target-hit vs ${Math.round(forecast.stopProb3*100)}% stop-touch over 1–3 sessions. `:""}${checks.slice(0,7).join(" • ")}. Volume Profile uses ${completedDates.length||0} completed sessions.`;
 
   const an={updatedAt:Date.now(),signal,signalClass,setup,confidence,reason,internalSummary,score,
     h4Trend:h4.trend,h1Trend:h1.trend,m5Trend:m5.trend,ichimokuM5:ich5.state,ichimokuH1:ich1.state,profile,profilePos,orLow,orHigh,
     dailyTrend:dailyTrendObj.trend,dailyTrendClass:dailyTrendObj.trend==="Bullish"?"positive":dailyTrendObj.trend==="Bearish"?"negative":"warning",
     prevLow:prevDay?.l||0,prevHigh:prevDay?.h||0,fiveLow,fiveHigh,dailyAtr,
     entryLow,entryHigh,entryText:`${money(entryLow)}–${money(entryHigh)}`,tp,stop,vwap,ema9,ema20,rsi,atr,volRatio,
-    qtyForTarget,capitalRequired,minExitForTarget,estimatedNet,buyComm,sellComm,news,newsScore,qualifiedPlan,
+    qtyForTarget,capitalRequired,minExitForTarget,estimatedNet,buyComm,sellComm,news,newsScore,qualifiedPlan,forecast,stretchTarget,forecastEdge,
     positionMode,positionBreakEven,profitGuard,nextUpsideTarget,currentNet,protectedNet,peakSinceBreakEven,peakOpenProfit,positionReason,profitGoal,profitGoalPrice,profitGoalReached,holdingHorizon,sellAlertPrice,recoveryPlan};
   runtimeAnalysis[s.id]=an;state.analysisCache[s.id]={...an,news:[]};scheduleSave();render();return an
 }
@@ -596,6 +625,53 @@ function calcVolumeProfile(bars,bins=48,valueArea=0.70){
 }
 function volumeProfilePosition(price,p,atr){if(!p)return"";const pad=Math.max(0.15*atr,price*0.001);if(price<p.val-pad)return"below VAL";if(Math.abs(price-p.val)<=pad)return"at VAL support";if(price<p.poc-pad)return"between VAL and POC";if(Math.abs(price-p.poc)<=pad)return"near POC";if(price<p.vah-pad)return"between POC and VAH";if(Math.abs(price-p.vah)<=pad)return"at VAH";return"above VAH"}
 
+
+async function getLongDailyHistory(s,a,force=false){
+  const symbol=apiSymbol(s,a),key=String(symbol||"").toUpperCase(),cached=dailyHistoryCache[key];
+  if(cached&&Date.now()-Number(cached.at||0)<4*60*60*1000&&Array.isArray(cached.bars)&&cached.bars.length>=80)return cached.bars;
+  try{
+    const d=await tdFetch("time_series",{symbol,interval:"1day",outputsize:260,order:"asc"});
+    if(d?.status==="error"||d?.code)throw Error(d?.message||"Daily history unavailable");
+    const bars=(d.values||[]).map(x=>({t:x.datetime,o:Number(x.open),h:Number(x.high),l:Number(x.low),c:Number(x.close),v:Number(x.volume||0)})).filter(x=>[x.o,x.h,x.l,x.c].every(Number.isFinite)).sort((x,y)=>String(x.t).localeCompare(String(y.t)));
+    if(bars.length>=80){dailyHistoryCache[key]={at:Date.now(),bars};return bars}
+  }catch{}
+  return []
+}
+function weightedQuantile(rows,key,q){
+  const a=(rows||[]).filter(x=>Number.isFinite(x[key])&&Number.isFinite(x.w)&&x.w>0).sort((x,y)=>x[key]-y[key]);if(!a.length)return 0;
+  const total=a.reduce((s,x)=>s+x.w,0),target=Math.max(0,Math.min(1,q))*total;let c=0;
+  for(const x of a){c+=x.w;if(c>=target)return x[key]}return a[a.length-1][key]
+}
+function analogFeature(bars,i){
+  if(i<55||i>=bars.length)return null;
+  const b=bars[i],c=b.c,closes=bars.slice(0,i+1).map(x=>x.c),atr=Math.max(calcATR(bars.slice(0,i+1),14),c*0.002);
+  const e20=ema(closes,20),e50=ema(closes,50),rsi=calcRSI(closes,14),v20=avg(bars.slice(Math.max(0,i-19),i+1).map(x=>x.v).filter(v=>v>0)),vr=v20>0&&b.v>0?b.v/v20:1;
+  const r1=i>=1?c/bars[i-1].c-1:0,r3=i>=3?c/bars[i-3].c-1:0,r5=i>=5?c/bars[i-5].c-1:0,range=Math.max(b.h-b.l,c*0.001),loc=(c-b.l)/range;
+  return [r1/0.03,r3/0.06,r5/0.10,((c-e20)/atr)/2.5,((e20-e50)/atr)/3,(rsi-50)/25,(vr-1)/1.5,(loc-0.5)/0.5,(atr/c)/0.04]
+}
+function analogForecast(dailyBars,livePrice,targetPrice,stopPrice){
+  const bars=(dailyBars||[]).filter(b=>Number.isFinite(b.c)&&b.c>0);if(bars.length<80||!(livePrice>0))return null;
+  const n=bars.length,cur=analogFeature(bars,n-1);if(!cur)return null;const candidates=[];
+  for(let i=55;i<=n-4;i++){
+    const f=analogFeature(bars,i);if(!f)continue;let d=0;for(let j=0;j<cur.length;j++)d+=(cur[j]-f[j])**2;d=Math.sqrt(d/cur.length);
+    const base=bars[i].c,next1=bars[i+1],next3=bars.slice(i+1,i+4),high1=next1.h/base-1,low1=next1.l/base-1,close1=next1.c/base-1,high3=Math.max(...next3.map(x=>x.h))/base-1,low3=Math.min(...next3.map(x=>x.l))/base-1,close3=next3[next3.length-1].c/base-1;
+    candidates.push({d,w:1/(0.10+d*d),high1,low1,close1,high3,low3,close3})
+  }
+  candidates.sort((a,b)=>a.d-b.d);const rows=candidates.slice(0,Math.min(28,candidates.length));if(rows.length<12)return null;
+  const sw=rows.reduce((s,x)=>s+x.w,0),prob=fn=>rows.reduce((s,x)=>s+x.w*(fn(x)?1:0),0)/sw;
+  const targetMove=targetPrice>livePrice?targetPrice/livePrice-1:0,stopMove=stopPrice<livePrice?stopPrice/livePrice-1:0;
+  const pTarget1=targetMove>0?prob(x=>x.high1>=targetMove):prob(x=>x.close1>0),pTarget3=targetMove>0?prob(x=>x.high3>=targetMove):prob(x=>x.close3>0);
+  const pStop1=stopMove<0?prob(x=>x.low1<=stopMove):0,pStop3=stopMove<0?prob(x=>x.low3<=stopMove):0,pUp1=prob(x=>x.close1>0),pUp3=prob(x=>x.close3>0);
+  const high1P40=weightedQuantile(rows,"high1",0.40),high3P40=weightedQuantile(rows,"high3",0.40),high3P65=weightedQuantile(rows,"high3",0.65),low3P50=weightedQuantile(rows,"low3",0.50);
+  const avgDist=rows.reduce((s,x)=>s+x.d*x.w,0)/sw,bias=pUp3>=0.62?"Bullish":pUp3<=0.42?"Bearish":"Mixed";
+  return{sampleSize:rows.length,avgDistance:avgDist,bias,pUp1,pUp3,targetProb1:pTarget1,targetProb3:pTarget3,stopProb1:pStop1,stopProb3:pStop3,high1P40,high3P40,high3P65,low3P50,
+    likelyHigh1:livePrice*(1+high1P40),likelyHigh3:livePrice*(1+high3P40),stretchHigh3:livePrice*(1+high3P65),likelyLow3:livePrice*(1+low3P50)}
+}
+function probabilityForMoveFromForecast(f,move,horizon=3){
+  if(!f||!Number.isFinite(move))return null;if(move<=0)return 1;
+  const ref=horizon===1?f.high1P40:f.high3P40,scale=Math.max(0.002,Math.abs(ref)*0.75);
+  return Math.max(0.05,Math.min(0.95,0.60-(move-ref)/(4*scale)))
+}
 function ema(arr,n){if(!arr.length)return 0;const k=2/(n+1);let e=arr[0];for(let i=1;i<arr.length;i++)e=arr[i]*k+e*(1-k);return e}
 function calcRSI(arr,n){if(arr.length<=n)return 50;let gains=0,losses=0;for(let i=arr.length-n;i<arr.length;i++){const d=arr[i]-arr[i-1];if(d>=0)gains+=d;else losses-=d}if(losses===0)return 100;const rs=(gains/n)/(losses/n);return 100-100/(1+rs)}
 function calcATR(bars,n){if(bars.length<2)return 0;const trs=[];for(let i=1;i<bars.length;i++)trs.push(Math.max(bars[i].h-bars[i].l,Math.abs(bars[i].h-bars[i-1].c),Math.abs(bars[i].l-bars[i-1].c)));return avg(trs.slice(-n))}
