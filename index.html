@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f172a">
-<title>Stock Account Tracker — Real-Time Dip & Peak Trader v15</title>
+<title>Stock Account Tracker — Real-Time Dip & Peak Trader v15.1</title>
 <style>
 :root{--bg:#f4f7fb;--card:#fff;--text:#172033;--muted:#667085;--line:#d9e0ea;--accent:#2563eb;--green:#087443;--greenbg:#ecfdf3;--red:#b42318;--redbg:#fef3f2;--amber:#a15c00;--amberbg:#fff7e6}
 [data-theme=dark]{--bg:#0b1220;--card:#111827;--text:#f8fafc;--muted:#9ca3af;--line:#2b3648;--accent:#60a5fa;--green:#34d399;--greenbg:#0d2a22;--red:#fb7185;--redbg:#32151a;--amber:#fbbf24;--amberbg:#2f2610}
@@ -348,7 +348,18 @@ function openAnalysis(id){editingAnalysisId=id;const f=findAnalysisTarget(id);if
 function changeAnalysisHorizon(){if(!editingAnalysisId)return;const f=findAnalysisTarget(editingAnalysisId);selectedForecastHorizon=analysisHorizon.value||"60m";if(f){f.s.forecastHorizon=selectedForecastHorizon;save()}refreshCurrentAnalysis(true)}
 function closeAnalysis(){analysisModal.classList.remove("open");analysisAddButton.style.display="none";editingAnalysisId=null;restartLiveFeed();restartTimers()}
 function addCurrentAnalysisToPortfolio(){const id=editingAnalysisId;if(!id)return;closeAnalysis();addConsideringToPortfolio(id)}
-async function refreshCurrentAnalysis(force=false,silent=false){if(!editingAnalysisId)return;const f=findAnalysisTarget(editingAnalysisId);if(!f)return;if(!silent)analysisBody.innerHTML='<div class="empty">Updating live candles, historical analogs, market structure, order flow, and news…</div>';try{const an=await analyzeStock(f.s,f.a,force,true);renderAnalysisDetail(f.s,f.a,applyLiveAnalysisOverlay(f.s,f.a,an))}catch(e){if(!silent||!runtimeAnalysis[f.s.id])analysisBody.innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
+async function refreshCurrentAnalysis(force=false,silent=false){
+  if(!editingAnalysisId)return;const f=findAnalysisTarget(editingAnalysisId);if(!f)return;
+  const prior=runtimeAnalysis[f.s.id]||state.analysisCache?.[f.s.id];
+  if(!silent&&!prior)analysisBody.innerHTML='<div class="empty">Updating live candles, historical analogs, market structure, order flow, and news…</div>';
+  try{const an=await analyzeStock(f.s,f.a,force,true);renderAnalysisDetail(f.s,f.a,applyLiveAnalysisOverlay(f.s,f.a,an))}
+  catch(e){
+    // Never blank a working real-time analysis because a slower historical refresh failed.
+    if(prior){renderAnalysisDetail(f.s,f.a,applyLiveAnalysisOverlay(f.s,f.a,prior));return}
+    const msg=String(e?.message||e||"Analysis history temporarily unavailable");
+    analysisBody.innerHTML=`<div class="empty">${esc(msg.replace(/HTTP\s*403/ig,"Historical data temporarily unavailable"))}<div class="sub" style="margin-top:8px">The second-by-second live price and fast ML engine remain active.</div></div>`
+  }
+}
 function renderAnalysisDetail(s,a,an){
   an=applyLiveAnalysisOverlay(s,a,an);const qs=quoteStatus(s,a),news=an.news||[],target=freshTradeProfitGoal(s,a),actionClass=an.signalClass||"sig-watch",pf=an.periodForecast||an.forecast,hlabel=horizonSpec(an.forecastHorizon||selectedForecastHorizon).label;
   const forecastBlock=pf?`<div class="result"><h4>${esc(hlabel)} price forecast</h4><div class="inline" style="justify-content:space-between;align-items:flex-start"><div><div class="sl">Most Likely Price at Horizon</div><div class="forecastHeadline">${money(pf.central)}</div><div class="forecastRange">Most similar historical setups + current live technical/order-flow confluence</div></div><div style="text-align:right"><span class="quality">Model confidence ${Math.round(pf.confidence)} / 100</span></div></div><div class="forecastBand"><div class="level"><div class="sl">50% Forecast Band</div><div class="n">${money(pf.band50Low)}–${money(pf.band50High)}</div></div><div class="level"><div class="sl">80% Forecast Band</div><div class="n">${money(pf.band80Low)}–${money(pf.band80High)}</div></div><div class="level"><div class="sl">Upside Probability</div><div class="n">${Math.round(pf.probUp*100)}%</div></div><div class="level"><div class="sl">Planned Target Probability</div><div class="n">${Math.round(pf.targetProb*100)}%</div></div><div class="level"><div class="sl">Stop-Touch Risk</div><div class="n">${Math.round(pf.stopProb*100)}%</div></div></div><div class="note" style="margin-top:10px"><strong>Most likely behavior:</strong> ${esc(pf.path)}. Likely excursion: ${money(pf.likelyLow)}–${money(pf.likelyHigh)}. Stretch upside: ${money(pf.stretchHigh)}. Target timing estimate: ${esc(pf.eta)}. Sample: ${pf.sampleSize} nearest historical analogs.${pf.learning?` <strong>Adaptive ${esc(pf.learning.status)}:</strong> ${pf.learning.samples} settled ${esc(s.ticker)} forecasts, ${Math.round(pf.learning.weight*100)}% model influence, learned bias ${pf.learning.biasPct>=0?"+":""}${pf.learning.biasPct.toFixed(2)}%, direction calibration ${Math.round(pf.learning.directionAccuracy*100)}%.`:""}</div></div>`:"";
@@ -491,7 +502,28 @@ function bucket5LabelFromEpoch(ts){const p=etPartsFromEpoch(ts),mm=Math.floor(p.
 function updateLiveTradeTape(ticker,price,volume,ts){const t=String(ticker||"").toUpperCase(),px=Number(price),v=Math.max(0,Number(volume)||0);if(!t||!(px>0))return;const arr=liveTradeTape[t]||(liveTradeTape[t]=[]),prev=arr.length?arr[arr.length-1]:null,lastSide=prev?.side||0;let side=lastSide;if(prev){if(px>prev.p)side=1;else if(px<prev.p)side=-1}else side=0;arr.push({p:px,v,ts:Number(ts)||Date.now()/1000,side});updateFastLearningPaths(t,px,Number(ts)||Date.now()/1000);const cutoff=Date.now()/1000-1800;while(arr.length>2000||arr[0]?.ts<cutoff)arr.shift();const key=bucket5LabelFromEpoch(ts),b=liveMinuteBars[t];if(!b||b.t!==key)liveMinuteBars[t]={t:key,o:px,h:px,l:px,c:px,v,tradeCount:1};else{b.h=Math.max(b.h,px);b.l=Math.min(b.l,px);b.c=px;b.v+=v;b.tradeCount++}}
 function liveFlowStats(ticker,windowSec=120){const arr=(liveTradeTape[String(ticker||"").toUpperCase()]||[]),now=Date.now()/1000,rows=arr.filter(x=>now-x.ts<=windowSec);if(!rows.length)return{buyVol:0,sellVol:0,delta:0,deltaPct:0,tradesPerMin:0,priceMovePct:0,absorption:"None"};let buy=0,sell=0;for(const x of rows){if(x.side>0)buy+=x.v;else if(x.side<0)sell+=x.v}const tot=buy+sell,delta=buy-sell,deltaPct=tot?delta/tot:0,first=rows[0].p,last=rows[rows.length-1].p,priceMovePct=first?100*(last-first)/first:0,tradesPerMin=rows.length/(windowSec/60);let absorption="None";if(deltaPct<-0.28&&priceMovePct>-0.08)absorption="Bullish absorption-like";else if(deltaPct>0.28&&priceMovePct<0.08)absorption="Bearish absorption-like";return{buyVol:buy,sellVol:sell,delta,deltaPct,tradesPerMin,priceMovePct,absorption}}
 function mergeLiveBar(bars,ticker){const out=(bars||[]).map(x=>({...x})),b=liveMinuteBars[String(ticker||"").toUpperCase()];if(!b)return out;const i=out.findIndex(x=>String(x.t).slice(0,16)===String(b.t).slice(0,16));if(i>=0){out[i].h=Math.max(out[i].h,b.h);out[i].l=Math.min(out[i].l,b.l);out[i].c=b.c;out[i].v=Math.max(Number(out[i].v)||0,Number(b.v)||0)}else if(!out.length||String(b.t)>String(out[out.length-1].t))out.push({t:b.t,o:b.o,h:b.h,l:b.l,c:b.c,v:b.v});return out}
-async function getM5History(s,a,force=false){const symbol=apiSymbol(s,a),key=String(symbol||"").toUpperCase(),c=m5HistoryCache[key],age=c?Date.now()-c.at:Infinity;if(c&&Array.isArray(c.bars)&&c.bars.length>=400&&age<5*60*1000&&(!force||age<60*1000))return mergeLiveBar(c.bars,s.ticker);const p={symbol,interval:"5min",outputsize:1200,order:"asc"};if(marketOf(s,a)==="US"&&state.marketData.includeExtended)p.prepost="true";const d=await tdFetch("time_series",p);if(d?.status==="error"||d?.code)throw Error(d?.message||"Required 5-minute history is unavailable for this symbol/plan.");const bars=(d.values||[]).map(x=>({t:x.datetime,o:Number(x.open),h:Number(x.high),l:Number(x.low),c:Number(x.close),v:Number(x.volume||0)})).filter(x=>[x.o,x.h,x.l,x.c].every(Number.isFinite)).sort((x,y)=>String(x.t).localeCompare(String(y.t)));m5HistoryCache[key]={at:Date.now(),bars};return mergeLiveBar(bars,s.ticker)}
+async function getM5History(s,a,force=false){
+  const symbol=apiSymbol(s,a),key=String(symbol||"").toUpperCase(),c=m5HistoryCache[key],age=c?Date.now()-c.at:Infinity,CACHE_MS=4*60*1000;
+  // Historical structure only needs a periodic refresh. The current candle/tape is merged locally every second,
+  // so reopening Analyze must not force another Twelve Data request.
+  if(c&&Array.isArray(c.bars)&&c.bars.length>=400&&age<CACHE_MS)return mergeLiveBar(c.bars,s.ticker);
+  // Do NOT request prepost=true here. Current-day U.S. extended-hours history is a premium entitlement at Twelve Data.
+  // Yahoo/Finnhub live events are merged locally, preserving the real-time pre/post tape without triggering 403s.
+  const p={symbol,interval:"5min",outputsize:1200,order:"asc"};
+  try{
+    const d=await tdFetch("time_series",p);
+    if(d?.status==="error"||d?.code)throw Error(d?.message||"Required 5-minute history is unavailable for this symbol/plan.");
+    const bars=(d.values||[]).map(x=>({t:x.datetime,o:Number(x.open),h:Number(x.high),l:Number(x.low),c:Number(x.close),v:Number(x.volume||0)})).filter(x=>[x.o,x.h,x.l,x.c].every(Number.isFinite)).sort((x,y)=>String(x.t).localeCompare(String(y.t)));
+    if(bars.length>=200){m5HistoryCache[key]={at:Date.now(),bars};return mergeLiveBar(bars,s.ticker)}
+    throw Error("Not enough historical candles were returned.");
+  }catch(e){
+    // If a prior history snapshot exists, keep the Analyze panel alive and continue updating it from the live tape.
+    if(c&&Array.isArray(c.bars)&&c.bars.length>=200)return mergeLiveBar(c.bars,s.ticker);
+    const msg=String(e?.message||e||"");
+    if(/403|forbidden|access|entitlement/i.test(msg))throw Error("Historical chart access was temporarily denied by the data provider. The live tape is still running; retry Analyze shortly.");
+    throw e;
+  }
+}
 function sma(arr,n){if(!arr||arr.length<n)return arr?.length?avg(arr):0;return avg(arr.slice(-n))}
 function calcDMIADX(bars,n=14){if(!bars||bars.length<n+2)return{adx:0,plusDI:0,minusDI:0};const tr=[],pd=[],md=[];for(let i=1;i<bars.length;i++){const up=bars[i].h-bars[i-1].h,down=bars[i-1].l-bars[i].l;pd.push(up>down&&up>0?up:0);md.push(down>up&&down>0?down:0);tr.push(Math.max(bars[i].h-bars[i].l,Math.abs(bars[i].h-bars[i-1].c),Math.abs(bars[i].l-bars[i-1].c)))}const atr=avg(tr.slice(-n))||1,plus=100*avg(pd.slice(-n))/atr,minus=100*avg(md.slice(-n))/atr,dx=[];for(let k=Math.max(n,tr.length-n*2);k<tr.length;k++){const a=avg(tr.slice(Math.max(0,k-n+1),k+1))||1,p=100*avg(pd.slice(Math.max(0,k-n+1),k+1))/a,m=100*avg(md.slice(Math.max(0,k-n+1),k+1))/a;dx.push((p+m)?100*Math.abs(p-m)/(p+m):0)}return{adx:avg(dx.slice(-n)),plusDI:plus,minusDI:minus}}
 function detectFVG(bars,atr){if(!bars||bars.length<5)return{bull:null,bear:null};const list=[];for(let i=2;i<bars.length;i++){const a=bars[i-2],b=bars[i-1],c=bars[i],baseVol=avg(bars.slice(Math.max(0,i-12),i).map(x=>x.v).filter(v=>v>0))||1;if(c.l>a.h){let fully=false,partial=false;for(let j=i+1;j<bars.length;j++){if(bars[j].l<=a.h){fully=true;break}if(bars[j].l<c.l)partial=true}if(!fully){const size=c.l-a.h,disp=Math.abs(b.c-b.o)+Math.abs(c.c-c.o),q=Math.min(100,35+35*Math.min(1.5,size/Math.max(atr,1e-9))/1.5+20*Math.min(2,(c.v||0)/baseVol)/2+10*Math.min(2,disp/Math.max(atr,1e-9))/2-(partial?10:0));list.push({type:"bull",low:a.h,high:c.l,mid:(a.h+c.l)/2,quality:q,index:i})}}if(c.h<a.l){let fully=false,partial=false;for(let j=i+1;j<bars.length;j++){if(bars[j].h>=a.l){fully=true;break}if(bars[j].h>c.h)partial=true}if(!fully){const size=a.l-c.h,disp=Math.abs(b.c-b.o)+Math.abs(c.c-c.o),q=Math.min(100,35+35*Math.min(1.5,size/Math.max(atr,1e-9))/1.5+20*Math.min(2,(c.v||0)/baseVol)/2+10*Math.min(2,disp/Math.max(atr,1e-9))/2-(partial?10:0));list.push({type:"bear",low:c.h,high:a.l,mid:(c.h+a.l)/2,quality:q,index:i})}}}const now=bars.length-1,bulls=list.filter(x=>x.type==="bull").sort((x,y)=>y.index-x.index),bears=list.filter(x=>x.type==="bear").sort((x,y)=>y.index-x.index);return{bull:bulls[0]||null,bear:bears[0]||null}}
@@ -503,7 +535,7 @@ function buildPeriodForecast(bars,dailyBars,livePrice,horizon,target,stop,score,
 
 async function analyzeStock(s,a,force=false,includeNews=false){
   const cached=runtimeAnalysis[s.id]||state.analysisCache?.[s.id],horizon=s.forecastHorizon||selectedForecastHorizon||state.settings.defaultForecastHorizon||"60m";
-  if(!force&&cached&&cached.forecastHorizon===horizon&&Date.now()-Number(cached.updatedAt||0)<4*1000)return applyLiveAnalysisOverlay(s,a,cached);
+  if(!force&&cached&&cached.forecastHorizon===horizon&&Date.now()-Number(cached.updatedAt||0)<12*1000)return applyLiveAnalysisOverlay(s,a,cached);
   if(!secrets.twelveKey)throw Error("Connect a Twelve Data API key in Settings to run the forecasting engine.");
   await ensureAnalysisQuote(s,a);
   const bars=await getM5History(s,a,force),h1Bars=aggregateSessionBars(bars,12),h4Bars=aggregateSessionBars(bars,48),dailyBars=aggregateDailyBars(bars),longDailyRaw=await getLongDailyHistory(s,a,force);
@@ -660,7 +692,20 @@ function formatNewsTime(s){if(!s)return"";const m=String(s).match(/(\d{4})(\d{2}
 const TD_SAFE_PER_MIN=7;let tdCreditLog=[],tdServerCooldownUntil=0;
 function tdRequestWeight(params={}){const raw=String(params.symbol||"").trim();return raw?Math.max(1,raw.split(",").filter(Boolean).length):1}
 async function tdAcquire(weight=1){weight=Math.max(1,Math.min(TD_SAFE_PER_MIN,weight));while(true){const now=Date.now();tdCreditLog=tdCreditLog.filter(x=>now-x.t<60000);const used=tdCreditLog.reduce((s,x)=>s+x.w,0);const cooldown=Math.max(0,tdServerCooldownUntil-now);if(!cooldown&&used+weight<=TD_SAFE_PER_MIN){tdCreditLog.push({t:now,w:weight});return}const oldest=tdCreditLog.length?Math.min(...tdCreditLog.map(x=>x.t)):now,wait=Math.max(cooldown,oldest+60500-now,750);await sleep(wait)}}
-async function tdFetch(endpoint,params={},overrideKey=null,retried=false){const key=overrideKey??secrets.twelveKey;if(!key)throw Error("Twelve Data API key is not configured.");const u=new URL(`https://api.twelvedata.com/${endpoint}`);Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=="")u.searchParams.set(k,v)});u.searchParams.set("apikey",key);await tdAcquire(tdRequestWeight(params));const c=new AbortController(),tm=setTimeout(()=>c.abort(),18000);try{const r=await fetch(u.toString(),{signal:c.signal});if(r.status===429){const ra=Number(r.headers.get("retry-after")||0),now=Date.now(),toMinute=60500-(now%60000);tdServerCooldownUntil=now+Math.max(ra*1000,toMinute);if(!retried){await sleep(Math.max(750,tdServerCooldownUntil-Date.now()));return tdFetch(endpoint,params,overrideKey,true)}throw Error("Twelve Data rate limit is temporarily busy. The app has paused requests and will retry automatically.")}if(!r.ok)throw Error(`HTTP ${r.status}`);return await r.json()}finally{clearTimeout(tm)}}
+async function tdFetch(endpoint,params={},overrideKey=null,retried=false,accessRetried=false){
+  const key=overrideKey??secrets.twelveKey;if(!key)throw Error("Twelve Data API key is not configured.");
+  const u=new URL(`https://api.twelvedata.com/${endpoint}`);Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=="")u.searchParams.set(k,v)});u.searchParams.set("apikey",key);
+  await tdAcquire(tdRequestWeight(params));const c=new AbortController(),tm=setTimeout(()=>c.abort(),18000);
+  try{
+    const r=await fetch(u.toString(),{signal:c.signal});
+    if(r.status===429){const ra=Number(r.headers.get("retry-after")||0),now=Date.now(),toMinute=60500-(now%60000);tdServerCooldownUntil=now+Math.max(ra*1000,toMinute);if(!retried){await sleep(Math.max(750,tdServerCooldownUntil-Date.now()));return tdFetch(endpoint,params,overrideKey,true,accessRetried)}throw Error("Twelve Data rate limit is temporarily busy. The app has paused requests and will retry automatically.")}
+    // Gracefully remove a premium extended-hours flag if an older call path ever supplies it on a free plan.
+    if(r.status===403&&params.prepost&&!accessRetried){const clean={...params};delete clean.prepost;return tdFetch(endpoint,clean,overrideKey,retried,true)}
+    if(r.status===403)throw Error("Twelve Data historical-data entitlement denied (403). Live Yahoo/Finnhub pricing is unaffected.");
+    if(!r.ok)throw Error(`Historical data request failed (${r.status}).`);
+    return await r.json();
+  }finally{clearTimeout(tm)}
+}
 async function fetchJSON(url,timeout=10000){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{const r=await fetch(url,{signal:c.signal});if(!r.ok)throw Error(`HTTP ${r.status}`);return await r.json()}finally{clearTimeout(t)}}
 let quoteRefreshInFlight=false,lastQuoteRefreshAt=0;
 function scheduleLiveRender(){if(liveRenderTimer)return;liveRenderTimer=setTimeout(()=>{liveRenderTimer=null;renderLiveViews()},900)}
@@ -702,7 +747,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 async function refreshAllAnalyses(force=false){if(!secrets.twelveKey||document.hidden)return;const a=acc(),refs=(a?.stocks||[]).filter(s=>!calc(s,a).complete&&marketOf(s,a)==="US");for(const s of refs){try{await analyzeStock(s,a,force,false)}catch{}await sleep(220)}}
 async function refreshEverything(showAlert=false){await refreshQuotes(showAlert)}
 async function quoteLoop(){clearTimeout(quoteTimer);if(document.hidden){quoteTimer=setTimeout(quoteLoop,60000);return}if(yahooWs&&yahooWs.readyState===WebSocket.OPEN)yahooSubscribe();else restartYahooFeed(false);if(finnhubReady()){if(ws&&ws.readyState===WebSocket.OPEN)finnhubSubscribe();else startFinnhubStream()}quoteTimer=setTimeout(quoteLoop,15000)}
-function restartTimers(){clearTimeout(quoteTimer);clearInterval(analysisTimer);clearInterval(liveUiTimer);clearTimeout(extendedBoostTimer);quoteTimer=setTimeout(quoteLoop,800);analysisTimer=setInterval(()=>{if(editingAnalysisId&&!document.hidden)refreshCurrentAnalysis(false,true)},5*1000);liveUiTimer=setInterval(()=>{if(!document.hidden)renderLiveViews()},1000);extendedBoostTimer=setTimeout(extendedHoursBoostTick,1200)}
+function restartTimers(){clearTimeout(quoteTimer);clearInterval(analysisTimer);clearInterval(liveUiTimer);clearTimeout(extendedBoostTimer);quoteTimer=setTimeout(quoteLoop,800);analysisTimer=setInterval(()=>{if(editingAnalysisId&&!document.hidden)refreshCurrentAnalysis(false,true)},15*1000);liveUiTimer=setInterval(()=>{if(!document.hidden)renderLiveViews()},1000);extendedBoostTimer=setTimeout(extendedHoursBoostTick,1200)}
 function refreshOnForeground(){if(document.hidden)return;if(!yahooWs||yahooWs.readyState!==WebSocket.OPEN)restartYahooFeed(false);else yahooSubscribe();if(finnhubReady()){if(!ws||ws.readyState!==WebSocket.OPEN)startFinnhubStream();else finnhubSubscribe()}renderLiveViews()}
 function exportData(){let copy=JSON.parse(JSON.stringify(state));let b=new Blob([JSON.stringify(copy,null,2)],{type:"application/json"}),u=URL.createObjectURL(b),a=document.createElement("a");a.href=u;a.download="stock-accounts-backup.json";a.click();URL.revokeObjectURL(u)}
 function importData(e){let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{try{let x=normalizeState(JSON.parse(r.result));state=x;save();selectedForecastHorizon=state.settings.defaultForecastHorizon||"60m";render();restartLiveFeed();restartTimers();refreshQuotes(false);alert("Backup imported. API keys were not changed.")}catch{alert("Invalid backup file.")}};r.readAsText(f);e.target.value=""}
